@@ -1,0 +1,1 @@
+{{ first_name }}, quick idea for {{ specialty }} workflows in {{ city }}

@@ -1,0 +1,14 @@
+Hello Dr. {{ full_name }},
+
+I noticed your work around {{ personalization_hook }} and thought this might be useful.
+
+We built {{ product_name }} to help teams run focused outreach and follow-ups without sounding robotic.
+For medical outreach specifically, it helps organize contacts, personalize messages, and schedule communications consistently.
+
+If useful, here is a short resource on digital health trends:
+{{ resource_link }}
+
+If you're open to it, I can share a 2-minute walkthrough tailored to {{ specialty }} practices.
+
+Best regards,
+{{ sender_name }}

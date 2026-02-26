@@ -1,0 +1,2 @@
+[console_scripts]
+cold-ai = cold_ai.cli:app
