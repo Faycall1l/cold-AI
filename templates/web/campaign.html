@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Campaign {{ campaign.id }} - cold-AI Review</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f4f4f4; }
+    textarea { width: 100%; min-height: 120px; }
+    .row { margin-bottom: 12px; }
+    .btn { padding: 6px 10px; border: 0; border-radius: 6px; cursor: pointer; }
+    .approve { background: #2e7d32; color: #fff; }
+    .reject { background: #c62828; color: #fff; }
+    .send { background: #111; color: #fff; }
+    .muted { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <a href="/">← Back to campaigns</a>
+  </div>
+
+  <h1>Campaign #{{ campaign.id }} - {{ campaign.name }}</h1>
+  <p class="muted">Review drafts, approve with schedule, or reject.</p>
+
+  <form method="post" action="/campaigns/{{ campaign.id }}/send-due" class="row">
+    <label>Send mode:
+      <select name="dry_run">
+        <option value="true">Dry-run</option>
+        <option value="false">Real send (SMTP)</option>
+      </select>
+    </label>
+    <button class="btn send" type="submit">Send Due</button>
+  </form>
+
+  {% if drafts %}
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Lead</th>
+        <th>Subject</th>
+        <th>Body</th>
+        <th>Status</th>
+        <th>Schedule (ISO or datetime-local)</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in drafts %}
+      <tr>
+        <td>{{ d.id }}</td>
+        <td>
+          <div>{{ d.full_name or '-' }}</div>
+          <div class="muted">{{ d.email }}</div>
+          <div class="muted">{{ d.specialty or '-' }} / {{ d.city or '-' }}</div>
+        </td>
+        <td>{{ d.subject }}</td>
+        <td><textarea readonly>{{ d.body }}</textarea></td>
+        <td>{{ d.status }}</td>
+        <td>
+          <form method="post" action="/drafts/{{ d.id }}/approve">
+            <input type="hidden" name="campaign_id" value="{{ campaign.id }}" />
+            <input
+              type="text"
+              name="scheduled_at"
+              value="{{ d.scheduled_at or '' }}"
+              placeholder="2026-02-26T09:30:00+01:00"
+            />
+            <div class="muted">Empty = now (UTC)</div>
+            <button class="btn approve" type="submit">Approve</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="/drafts/{{ d.id }}/reject">
+            <input type="hidden" name="campaign_id" value="{{ campaign.id }}" />
+            <button class="btn reject" type="submit">Reject</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p>No drafts for this campaign yet.</p>
+  {% endif %}
+</body>
+</html>

@@ -74,6 +74,17 @@ class CampaignRepository:
             row = conn.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,)).fetchone()
         return dict(row) if row else None
 
+    def list_all(self) -> list[dict]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM campaigns
+                ORDER BY id DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
 
 class DraftRepository:
     def create_or_ignore(self, campaign_id: int, lead_id: int, subject: str, body: str) -> bool:

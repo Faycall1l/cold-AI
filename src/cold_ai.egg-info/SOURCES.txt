@@ -23,3 +23,5 @@ src/cold_ai/services/draft_service.py
 src/cold_ai/services/email_provider.py
 src/cold_ai/services/import_service.py
 src/cold_ai/services/send_service.py
+src/cold_ai/web/__init__.py
+src/cold_ai/web/app.py

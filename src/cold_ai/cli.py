@@ -10,6 +10,7 @@ from .services.campaign_service import create_campaign
 from .services.draft_service import generate_drafts
 from .services.import_service import import_leads
 from .services.send_service import send_due
+from .web.app import app as web_app
 
 app = typer.Typer(help="cold-AI Phase 1 CLI")
 
@@ -61,6 +62,16 @@ def import_approvals_command(csv_path: Path = typer.Option(..., exists=True, rea
 def send_due_command(dry_run: bool = typer.Option(False)) -> None:
     sent, failed = send_due(dry_run=dry_run)
     typer.echo(f"Send finished: sent={sent}, failed={failed}")
+
+
+@app.command("review-ui")
+def review_ui_command(
+    host: str = typer.Option("127.0.0.1"),
+    port: int = typer.Option(8000),
+) -> None:
+    import uvicorn
+
+    uvicorn.run(web_app, host=host, port=port)
 
 
 if __name__ == "__main__":

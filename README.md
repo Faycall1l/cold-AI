@@ -8,12 +8,34 @@ Phase 1 MVP of an agentic cold outreach system focused on:
 - Scheduling
 - Sending due emails (dry-run or SMTP)
 
+## Phase 1.1: Web Review UI
+
+You can review/approve/reject drafts in a browser instead of CSV.
+
+```bash
+PYTHONPATH=src .venv/bin/python -m cold_ai.cli review-ui --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000`.
+
+In the campaign page you can:
+
+- approve and schedule drafts
+- reject drafts
+- trigger `send due` in dry-run or real mode
+
 ## 1) Setup
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
+```
+
+If you prefer not to install the local package entrypoint, you can run every command in source mode:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m cold_ai.cli --help
 ```
 
 ## 2) Initialize database
@@ -71,6 +93,8 @@ Edit CSV columns:
 ```bash
 cold-ai import-approvals --csv-path data/exports/campaign_1_approvals.csv
 ```
+
+CSV approval remains available as a fallback flow.
 
 ## 8) Send due emails
 
