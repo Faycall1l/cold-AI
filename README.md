@@ -40,7 +40,7 @@ You can review/approve/reject drafts in a React dashboard instead of CSV.
 PYTHONPATH=src .venv/bin/python -m cold_ai.cli review-ui --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000`.
+Open `http://127.0.0.1:8000` (global start page). Authenticated app is at `/app`.
 
 In the campaign page you can:
 
@@ -48,10 +48,33 @@ In the campaign page you can:
 - reject drafts
 - trigger `send due` in dry-run or real mode
 - generate drafts from the UI
+- click draft cards to edit subject/body
+- apply quick personalization snippets and save edits
+- switch between `Grid`, `List`, and `Compact` draft views
 
 From the main dashboard you can now create campaigns directly (no CLI required for this step).
 
 The dashboard is a rich client (React) served by FastAPI, using JSON API routes under `/api/*`.
+
+## Auth (OAuth, no custom password system)
+
+This app uses Authlib OAuth providers with session-based access control.
+
+Set these env vars before running:
+
+```bash
+export COLD_AI_SESSION_SECRET="replace-with-long-random-secret"
+export COLD_AI_APP_BASE_URL="http://127.0.0.1:8000"
+
+# Google OAuth (optional but recommended)
+export COLD_AI_OAUTH_GOOGLE_CLIENT_ID="..."
+export COLD_AI_OAUTH_GOOGLE_CLIENT_SECRET="..."
+```
+
+Sign-in options:
+
+- Google OAuth
+- Email/password sign-up and sign-in forms (built into the start page)
 
 ## 1) Setup
 

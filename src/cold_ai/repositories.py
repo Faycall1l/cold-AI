@@ -130,6 +130,17 @@ class DraftRepository:
                 (draft_id,),
             )
 
+    def update_content(self, draft_id: int, subject: str, body: str) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE drafts
+                SET subject = ?, body = ?
+                WHERE id = ?
+                """,
+                (subject, body, draft_id),
+            )
+
     def list_due(self, now_iso: str) -> list[dict]:
         with get_connection() as conn:
             rows = conn.execute(
@@ -179,3 +190,29 @@ class EventRepository:
                 """,
                 (draft_id, event_type, json.dumps(payload, ensure_ascii=False)),
             )
+
+
+class UserRepository:
+    def create(self, email: str, password_hash: str, full_name: str | None = None) -> int:
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO users (email, password_hash, full_name)
+                VALUES (?, ?, ?)
+                """,
+                (email, password_hash, full_name),
+            )
+            return int(cursor.lastrowid)
+
+    def get_by_email(self, email: str) -> dict | None:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE lower(email) = lower(?)",
+                (email,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_by_id(self, user_id: int) -> dict | None:
+        with get_connection() as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None

@@ -3,7 +3,11 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from passlib.context import CryptContext
+
 from .config import settings
+
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def get_connection() -> sqlite3.Connection:
@@ -66,5 +70,26 @@ def init_db() -> None:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(draft_id) REFERENCES drafts(id)
             );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                full_name TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
             """
         )
+
+        existing = conn.execute(
+            "SELECT id FROM users WHERE lower(email) = lower(?)",
+            ("mock.admin@cold-ai.com",),
+        ).fetchone()
+        if not existing:
+            conn.execute(
+                """
+                INSERT INTO users (email, password_hash, full_name)
+                VALUES (?, ?, ?)
+                """,
+                ("mock.admin@cold-ai.com", pwd_context.hash("MockAdmin123!"), "Mock Admin"),
+            )

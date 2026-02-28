@@ -28,5 +28,11 @@ class Settings:
         if model.strip()
     )
 
+    app_base_url: str = os.getenv("COLD_AI_APP_BASE_URL", "http://127.0.0.1:8000")
+    session_secret: str = os.getenv("COLD_AI_SESSION_SECRET", "change-me-in-production")
+
+    oauth_google_client_id: str | None = os.getenv("COLD_AI_OAUTH_GOOGLE_CLIENT_ID")
+    oauth_google_client_secret: str | None = os.getenv("COLD_AI_OAUTH_GOOGLE_CLIENT_SECRET")
+
 
 settings = Settings()

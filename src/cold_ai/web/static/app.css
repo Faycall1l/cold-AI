@@ -19,6 +19,13 @@ body {
   color: var(--text);
 }
 
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
 .container {
   max-width: 1200px;
   margin: 18px auto;
@@ -112,6 +119,10 @@ tr:last-child td {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 9px 12px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
@@ -124,6 +135,12 @@ tr:last-child td {
 .btn-ok { background: var(--ok); color: #05110a; border-color: #92f7b4; }
 .btn-bad { background: var(--bad); color: #180707; border-color: #ff9d9d; }
 .btn-soft { background: #111b31; color: var(--text); }
+
+.btn-top {
+  min-width: 150px;
+  min-height: 52px;
+  padding: 0 18px;
+}
 
 .input, .select {
   border: 1px solid var(--line);
@@ -148,6 +165,18 @@ textarea.input {
 
 .pill {
   display: inline-flex;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  background: #111b31;
+  border-radius: 8px;
   font-size: 12px;
   color: var(--muted);
 }
@@ -201,6 +230,14 @@ textarea.input {
   box-shadow: 6px 6px 0 var(--accent);
   padding: 16px;
   border-radius: 8px;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover {
+  transform: translate(-1px, -1px);
 }
 
 .menu-title {
@@ -272,8 +309,33 @@ textarea.input {
   gap: 12px;
 }
 
+.draft-grid.view-list,
+.draft-grid.view-compact {
+  grid-template-columns: 1fr;
+}
+
+.draft-grid.view-list .draft-card {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.draft-grid.view-compact .draft-card .body-preview {
+  max-height: 80px;
+}
+
+.draft-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
 .draft-card {
   padding: 12px;
+}
+
+.draft-card.active {
+  border-color: #77b7ff;
+  box-shadow: 4px 4px 0 #77b7ff;
 }
 
 .draft-top {
@@ -303,6 +365,16 @@ textarea.input {
   line-height: 1.4;
 }
 
+.editor-card {
+  padding: 12px;
+}
+
+.editor-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
 @media (min-width: 720px) {
   .container {
     margin: 24px auto;
@@ -316,6 +388,11 @@ textarea.input {
   .draft-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .draft-layout {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    align-items: start;
+  }
 }
 
 @media (min-width: 1080px) {
@@ -325,6 +402,16 @@ textarea.input {
   }
 
   .draft-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .draft-grid.view-list,
+  .draft-grid.view-compact {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-card {
+    position: sticky;
+    top: 12px;
   }
 }

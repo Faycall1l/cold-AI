@@ -13,16 +13,27 @@ async function api(path, options = {}) {
 }
 
 function App() {
+  const [currentUser, setCurrentUser] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
   const [campaignData, setCampaignData] = useState({ campaign: null, drafts: [] });
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
   const [sendMode, setSendMode] = useState("dry");
   const [scheduleByDraft, setScheduleByDraft] = useState({});
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [draftLimit, setDraftLimit] = useState(100);
+
+  const [selectedDraftId, setSelectedDraftId] = useState(null);
+  const [editorSubject, setEditorSubject] = useState("");
+  const [editorBody, setEditorBody] = useState("");
+  const [personalizeOpener, setPersonalizeOpener] = useState("");
+  const [personalizeCTA, setPersonalizeCTA] = useState("");
+  const [personalizeResource, setPersonalizeResource] = useState("");
+
   const [createForm, setCreateForm] = useState({
     name: "",
     subject_template: "",
@@ -39,10 +50,39 @@ function App() {
     return counts;
   }, [campaignData.drafts]);
 
+  const selectedDraft = useMemo(
+    () => campaignData.drafts.find((draft) => draft.id === selectedDraftId) || null,
+    [campaignData.drafts, selectedDraftId],
+  );
+
   useEffect(() => {
-    loadCampaigns();
-    loadDefaultTemplates();
+    bootstrap();
   }, []);
+
+  async function bootstrap() {
+    try {
+      const me = await api("/api/me");
+      if (!me.authenticated) {
+        window.location.href = "/";
+        return;
+      }
+      setCurrentUser(me.user || null);
+      await loadCampaigns();
+      await loadDefaultTemplates();
+    } catch {
+      window.location.href = "/";
+    }
+  }
+
+  useEffect(() => {
+    if (selectedDraft) {
+      setEditorSubject(selectedDraft.subject || "");
+      setEditorBody(selectedDraft.body || "");
+      setPersonalizeOpener("");
+      setPersonalizeCTA("");
+      setPersonalizeResource("");
+    }
+  }, [selectedDraftId]);
 
   async function loadCampaigns() {
     try {
@@ -63,7 +103,7 @@ function App() {
         body_template: data.body_template || prev.body_template,
       }));
     } catch {
-      // keep empty values as fallback
+      // ignore and keep fallback
     }
   }
 
@@ -75,6 +115,7 @@ function App() {
       setCampaignData(data);
       setMessage("");
       setError("");
+      setSelectedDraftId(null);
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -92,6 +133,7 @@ function App() {
       setMessage(`Draft #${draftId} approved.`);
       setError("");
       await openCampaign(selectedCampaignId);
+      setSelectedDraftId(draftId);
     } catch (err) {
       setError(String(err.message || err));
     }
@@ -106,9 +148,49 @@ function App() {
       setMessage(`Draft #${draftId} rejected.`);
       setError("");
       await openCampaign(selectedCampaignId);
+      setSelectedDraftId(draftId);
     } catch (err) {
       setError(String(err.message || err));
     }
+  }
+
+  async function saveDraftEdits() {
+    if (!selectedDraft) {
+      return;
+    }
+    try {
+      await api(`/api/drafts/${selectedDraft.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          subject: editorSubject,
+          body: editorBody,
+        }),
+      });
+      setMessage(`Draft #${selectedDraft.id} saved.`);
+      setError("");
+      await openCampaign(selectedCampaignId);
+      setSelectedDraftId(selectedDraft.id);
+    } catch (err) {
+      setError(String(err.message || err));
+    }
+  }
+
+  function applyQuickPersonalization() {
+    let body = editorBody;
+
+    if (personalizeOpener.trim()) {
+      body = `${personalizeOpener.trim()}\n\n${body}`;
+    }
+
+    if (personalizeResource.trim()) {
+      body = `${body}\n\nUseful link:\n${personalizeResource.trim()}`;
+    }
+
+    if (personalizeCTA.trim()) {
+      body = `${body}\n\n${personalizeCTA.trim()}`;
+    }
+
+    setEditorBody(body.trim());
   }
 
   async function sendDue() {
@@ -134,10 +216,8 @@ function App() {
       });
       setMessage(`Draft generation done: created=${result.created}, ignored=${result.ignored}.`);
       setError("");
-      if (selectedCampaignId === campaignId) {
-        await openCampaign(campaignId);
-      }
       await loadCampaigns();
+      await openCampaign(campaignId);
     } catch (err) {
       setError(String(err.message || err));
     }
@@ -149,6 +229,7 @@ function App() {
       subject_template: createForm.subject_template,
       body_template: createForm.body_template,
     };
+
     if (!payload.name || !payload.subject_template.trim() || !payload.body_template.trim()) {
       setError("Name, subject template, and body template are required.");
       return;
@@ -175,79 +256,82 @@ function App() {
     setCampaignData({ campaign: null, drafts: [] });
     setMessage("");
     setError("");
+    setSelectedDraftId(null);
     loadCampaigns();
   }
 
-  return (
-    React.createElement("div", { className: "container" },
-      React.createElement("div", { className: "crumb" }, "cold-ai / dashboard"),
-      React.createElement("div", { className: "topbar" },
-        React.createElement("div", null,
-          React.createElement("h1", { className: "title" }, selectedCampaign ? selectedCampaign.name : "Campaigns"),
-          React.createElement("div", { className: "subtitle" }, "Run outreach workflows with a click-first control panel")
-        ),
-        React.createElement("div", { className: "row" },
-          !selectedCampaign && React.createElement("button", { className: "btn btn-dark", onClick: () => setShowCreateModal(true) }, "Create Campaign"),
-          selectedCampaign && React.createElement("button", { className: "btn btn-soft", onClick: goHome }, "Back")
-        )
+  async function logout() {
+    await api("/auth/logout", { method: "POST", body: JSON.stringify({}) });
+    window.location.href = "/";
+  }
+
+  return React.createElement("div", { className: "container" },
+    React.createElement("div", { className: "crumb" }, "cold-ai / dashboard"),
+    React.createElement("div", { className: "topbar" },
+      React.createElement("div", null,
+        React.createElement("h1", { className: "title" }, selectedCampaign ? selectedCampaign.name : "Campaigns"),
+        React.createElement("div", { className: "subtitle" }, "Run outreach workflows with a click-first control panel")
       ),
+      React.createElement("div", { className: "row" },
+        currentUser && React.createElement("div", { className: "user-chip" }, currentUser.email || currentUser.name || "User"),
+        !selectedCampaign && React.createElement("button", { className: "btn btn-dark btn-top", onClick: () => setShowCreateModal(true) }, "Create Campaign"),
+        selectedCampaign && React.createElement("button", { className: "btn btn-soft btn-top", onClick: goHome }, "Back"),
+        React.createElement("button", { className: "btn btn-soft btn-top", onClick: logout }, "Logout")
+      )
+    ),
 
-      message && React.createElement("div", { className: "message" }, message),
-      error && React.createElement("div", { className: "error" }, error),
-      busy && React.createElement("div", { className: "muted", style: { marginBottom: "10px" } }, "Loading…"),
+    message && React.createElement("div", { className: "message" }, message),
+    error && React.createElement("div", { className: "error" }, error),
+    busy && React.createElement("div", { className: "muted", style: { marginBottom: "10px" } }, "Loading…"),
 
-      !selectedCampaign && React.createElement(CampaignList, {
-        campaigns,
-        onOpen: openCampaign,
-        draftLimit,
-        setDraftLimit,
-        onGenerateDrafts: generateDraftsForCampaign,
-      }),
+    !selectedCampaign && React.createElement(CampaignList, {
+      campaigns,
+      onOpen: openCampaign,
+      draftLimit,
+      setDraftLimit,
+      onGenerateDrafts: generateDraftsForCampaign,
+    }),
 
-      selectedCampaign && React.createElement(CampaignDetails, {
-        campaign: selectedCampaign,
-        drafts: campaignData.drafts,
-        statusCounts,
-        sendMode,
-        setSendMode,
-        onSendDue: sendDue,
-        onApprove: approveDraft,
-        onReject: rejectDraft,
-        onGenerateDrafts: generateDraftsForCampaign,
-        draftLimit,
-        setDraftLimit,
-        scheduleByDraft,
-        setScheduleByDraft,
-      }),
+    selectedCampaign && React.createElement(CampaignDetails, {
+      campaign: selectedCampaign,
+      drafts: campaignData.drafts,
+      selectedDraftId,
+      setSelectedDraftId,
+      statusCounts,
+      sendMode,
+      setSendMode,
+      onSendDue: sendDue,
+      onGenerateDrafts: generateDraftsForCampaign,
+      draftLimit,
+      setDraftLimit,
+      onApprove: approveDraft,
+      onReject: rejectDraft,
+      scheduleByDraft,
+      setScheduleByDraft,
+      editorSubject,
+      setEditorSubject,
+      editorBody,
+      setEditorBody,
+      onSaveEdits: saveDraftEdits,
+      personalizeOpener,
+      setPersonalizeOpener,
+      personalizeCTA,
+      setPersonalizeCTA,
+      personalizeResource,
+      setPersonalizeResource,
+      onApplyQuickPersonalization: applyQuickPersonalization,
+    }),
 
-      showCreateModal && React.createElement(CreateCampaignModal, {
-        form: createForm,
-        setForm: setCreateForm,
-        onClose: () => setShowCreateModal(false),
-        onCreate: createCampaign,
-      })
-    )
+    showCreateModal && React.createElement(CreateCampaignModal, {
+      form: createForm,
+      setForm: setCreateForm,
+      onClose: () => setShowCreateModal(false),
+      onCreate: createCampaign,
+    })
   );
 }
 
 function CampaignList({ campaigns, onOpen, draftLimit, setDraftLimit, onGenerateDrafts }) {
-  const content = !campaigns.length
-    ? React.createElement("div", { className: "card empty" }, "No campaigns found.")
-    : React.createElement("div", { className: "menu-grid" },
-        campaigns.map((campaign) => React.createElement("div", { key: campaign.id, className: "menu-card" },
-          React.createElement("div", { className: "menu-title" }, campaign.name),
-          React.createElement("div", { className: "menu-meta" }, `#${campaign.id} · ${campaign.status}`),
-          React.createElement("div", { className: "menu-actions" },
-            React.createElement("button", { className: "btn btn-soft", onClick: () => onOpen(campaign.id) }, "Open"),
-            React.createElement("button", { className: "btn btn-dark", onClick: () => onGenerateDrafts(campaign.id) }, "Generate Drafts")
-          )
-        ))
-      );
-
-  if (!campaigns.length) {
-    return content;
-  }
-
   return React.createElement(React.Fragment, null,
     React.createElement("div", { className: "card controls-card" },
       React.createElement("div", { className: "row" },
@@ -264,13 +348,42 @@ function CampaignList({ campaigns, onOpen, draftLimit, setDraftLimit, onGenerate
         React.createElement("span", { className: "muted" }, "Used by quick Generate Drafts buttons")
       )
     ),
-    content
+
+    !campaigns.length
+      ? React.createElement("div", { className: "card empty" }, "No campaigns found.")
+      : React.createElement("div", { className: "menu-grid" },
+          campaigns.map((campaign) => React.createElement(
+            "div",
+            {
+              key: campaign.id,
+              className: "menu-card clickable",
+              onClick: () => onOpen(campaign.id),
+            },
+            React.createElement("div", { className: "menu-title" }, campaign.name),
+            React.createElement("div", { className: "menu-meta" }, `#${campaign.id} · ${campaign.status}`),
+            React.createElement("div", { className: "menu-actions" },
+              React.createElement(
+                "button",
+                {
+                  className: "btn btn-dark",
+                  onClick: (event) => {
+                    event.stopPropagation();
+                    onGenerateDrafts(campaign.id);
+                  },
+                },
+                "Generate Drafts",
+              )
+            )
+          ))
+        )
   );
 }
 
 function CampaignDetails({
   campaign,
   drafts,
+  selectedDraftId,
+  setSelectedDraftId,
   statusCounts,
   sendMode,
   setSendMode,
@@ -282,9 +395,22 @@ function CampaignDetails({
   onReject,
   scheduleByDraft,
   setScheduleByDraft,
+  editorSubject,
+  setEditorSubject,
+  editorBody,
+  setEditorBody,
+  onSaveEdits,
+  personalizeOpener,
+  setPersonalizeOpener,
+  personalizeCTA,
+  setPersonalizeCTA,
+  personalizeResource,
+  setPersonalizeResource,
+  onApplyQuickPersonalization,
 }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [viewMode, setViewMode] = useState("grid");
 
   const visibleDrafts = useMemo(() => {
     const lowered = query.trim().toLowerCase();
@@ -295,6 +421,10 @@ function CampaignDetails({
       return statusOk && queryOk;
     });
   }, [drafts, statusFilter, query]);
+
+  const activeDraft = visibleDrafts.find((draft) => draft.id === selectedDraftId)
+    || drafts.find((draft) => draft.id === selectedDraftId)
+    || null;
 
   return React.createElement(React.Fragment, null,
     React.createElement("div", { className: "row", style: { marginBottom: "12px" } },
@@ -351,43 +481,114 @@ function CampaignDetails({
           React.createElement("option", { value: "sent" }, "Sent"),
           React.createElement("option", { value: "failed" }, "Failed"),
           React.createElement("option", { value: "rejected" }, "Rejected")
+        ),
+        React.createElement("div", { className: "row" },
+          React.createElement("button", { className: `btn ${viewMode === "grid" ? "btn-dark" : "btn-soft"}`, onClick: () => setViewMode("grid") }, "Grid"),
+          React.createElement("button", { className: `btn ${viewMode === "list" ? "btn-dark" : "btn-soft"}`, onClick: () => setViewMode("list") }, "List"),
+          React.createElement("button", { className: `btn ${viewMode === "compact" ? "btn-dark" : "btn-soft"}`, onClick: () => setViewMode("compact") }, "Compact")
         )
       )
     ),
 
-    !visibleDrafts.length
-      ? React.createElement("div", { className: "card empty" }, "No drafts for this campaign.")
-      : React.createElement("div", { className: "draft-grid" },
-          visibleDrafts.map((draft) => React.createElement("div", { key: draft.id, className: "card draft-card" },
-            React.createElement("div", { className: "draft-top" },
-              React.createElement("div", null,
-                React.createElement("div", { className: "draft-name" }, draft.full_name || "-"),
-                React.createElement("div", { className: "muted" }, draft.email),
-                React.createElement("div", { className: "muted" }, `${draft.specialty || "-"} / ${draft.city || "-"}`)
+    React.createElement("div", { className: "draft-layout" },
+      React.createElement("div", { className: `draft-grid view-${viewMode}` },
+        !visibleDrafts.length
+          ? React.createElement("div", { className: "card empty" }, "No drafts for this campaign.")
+          : visibleDrafts.map((draft) => React.createElement("div", {
+              key: draft.id,
+              className: `card draft-card clickable ${selectedDraftId === draft.id ? "active" : ""}`,
+              onClick: () => setSelectedDraftId(draft.id),
+            },
+              React.createElement("div", { className: "draft-top" },
+                React.createElement("div", null,
+                  React.createElement("div", { className: "draft-name" }, draft.full_name || "-"),
+                  React.createElement("div", { className: "muted" }, draft.email),
+                  React.createElement("div", { className: "muted" }, `${draft.specialty || "-"} / ${draft.city || "-"}`)
+                ),
+                React.createElement("span", { className: "status" }, draft.status)
               ),
-              React.createElement("span", { className: "status" }, draft.status)
-            ),
-            React.createElement("div", { className: "draft-label" }, "Subject"),
-            React.createElement("div", { className: "draft-subject" }, draft.subject),
-            React.createElement("div", { className: "draft-label" }, "Body"),
-            React.createElement("div", { className: "body-preview" }, draft.body),
-            React.createElement("div", { className: "draft-label" }, "Schedule"),
-            React.createElement("div", { className: "schedule-cell" },
-              React.createElement("input", {
-                className: "input schedule-input",
-                value: scheduleByDraft[draft.id] ?? draft.scheduled_at ?? "",
-                placeholder: "2026-02-28T10:00:00+01:00",
-                onChange: (event) =>
-                  setScheduleByDraft((prev) => ({ ...prev, [draft.id]: event.target.value })),
-              }),
-              React.createElement("div", { className: "schedule-hint" }, "Leave empty to send now (UTC)")
-            ),
-            React.createElement("div", { className: "row", style: { marginTop: "10px" } },
-              React.createElement("button", { className: "btn btn-ok", onClick: () => onApprove(draft.id) }, "Approve"),
-              React.createElement("button", { className: "btn btn-bad", onClick: () => onReject(draft.id) }, "Reject")
+              React.createElement("div", { className: "draft-label" }, "Subject"),
+              React.createElement("div", { className: "draft-subject" }, draft.subject),
+              React.createElement("div", { className: "draft-label" }, "Body"),
+              React.createElement("div", { className: "body-preview" }, viewMode === "compact" ? `${(draft.body || "").slice(0, 180)}${(draft.body || "").length > 180 ? "…" : ""}` : draft.body)
+            ))
+      ),
+
+      React.createElement("div", { className: "card editor-card" },
+        !activeDraft
+          ? React.createElement("div", { className: "empty" }, "Click a draft card to edit and personalize.")
+          : React.createElement(React.Fragment, null,
+              React.createElement("div", { className: "editor-title" }, `Editing draft #${activeDraft.id}`),
+              React.createElement("div", { className: "muted", style: { marginBottom: "10px" } }, `${activeDraft.full_name || "-"} · ${activeDraft.email}`),
+
+              React.createElement("div", { className: "field" },
+                React.createElement("label", { className: "muted" }, "Subject"),
+                React.createElement("textarea", {
+                  className: "input",
+                  rows: 2,
+                  value: editorSubject,
+                  onChange: (event) => setEditorSubject(event.target.value),
+                })
+              ),
+
+              React.createElement("div", { className: "field" },
+                React.createElement("label", { className: "muted" }, "Body"),
+                React.createElement("textarea", {
+                  className: "input",
+                  rows: 10,
+                  value: editorBody,
+                  onChange: (event) => setEditorBody(event.target.value),
+                })
+              ),
+
+              React.createElement("div", { className: "field" },
+                React.createElement("label", { className: "muted" }, "Quick personalization"),
+                React.createElement("div", { className: "row" },
+                  React.createElement("input", {
+                    className: "input",
+                    placeholder: "Custom opener (optional)",
+                    value: personalizeOpener,
+                    onChange: (event) => setPersonalizeOpener(event.target.value),
+                  }),
+                  React.createElement("input", {
+                    className: "input",
+                    placeholder: "Resource link (optional)",
+                    value: personalizeResource,
+                    onChange: (event) => setPersonalizeResource(event.target.value),
+                  })
+                ),
+                React.createElement("input", {
+                  className: "input",
+                  style: { marginTop: "8px" },
+                  placeholder: "CTA line (optional)",
+                  value: personalizeCTA,
+                  onChange: (event) => setPersonalizeCTA(event.target.value),
+                }),
+                React.createElement("div", { className: "row", style: { marginTop: "8px" } },
+                  React.createElement("button", { className: "btn btn-soft", onClick: onApplyQuickPersonalization }, "Apply Personalization")
+                )
+              ),
+
+              React.createElement("div", { className: "field" },
+                React.createElement("label", { className: "muted" }, "Schedule"),
+                React.createElement("input", {
+                  className: "input schedule-input",
+                  value: scheduleByDraft[activeDraft.id] ?? activeDraft.scheduled_at ?? "",
+                  placeholder: "2026-02-28T10:00:00+01:00",
+                  onChange: (event) =>
+                    setScheduleByDraft((prev) => ({ ...prev, [activeDraft.id]: event.target.value })),
+                }),
+                React.createElement("div", { className: "schedule-hint" }, "Leave empty to send now (UTC)")
+              ),
+
+              React.createElement("div", { className: "row", style: { marginTop: "12px" } },
+                React.createElement("button", { className: "btn btn-dark", onClick: onSaveEdits }, "Save Edits"),
+                React.createElement("button", { className: "btn btn-ok", onClick: () => onApprove(activeDraft.id) }, "Approve"),
+                React.createElement("button", { className: "btn btn-bad", onClick: () => onReject(activeDraft.id) }, "Reject")
+              )
             )
-          ))
-        )
+      )
+    )
   );
 }
 

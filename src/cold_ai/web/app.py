@@ -3,13 +3,17 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+from authlib.integrations.starlette_client import OAuth
 from dateutil import parser
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from passlib.context import CryptContext
+from pydantic import BaseModel, EmailStr, Field
+from starlette.middleware.sessions import SessionMiddleware
 
-from ..repositories import CampaignRepository, DraftRepository
+from ..config import settings
+from ..repositories import CampaignRepository, DraftRepository, UserRepository
 from ..services.draft_service import generate_drafts
 from ..services.send_service import send_due
 
@@ -19,6 +23,19 @@ WEB_DIR = Path(__file__).resolve().parent
 STATIC_DIR = WEB_DIR / "static"
 
 app.mount("/assets", StaticFiles(directory=str(STATIC_DIR)), name="assets")
+app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+
+oauth = OAuth()
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+
+if settings.oauth_google_client_id and settings.oauth_google_client_secret:
+    oauth.register(
+        name="google",
+        client_id=settings.oauth_google_client_id,
+        client_secret=settings.oauth_google_client_secret,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
 
 
 def _to_utc_iso(value: str) -> str:
@@ -48,19 +65,65 @@ class GenerateDraftsPayload(BaseModel):
     limit: int = 100
 
 
+class UpdateDraftPayload(BaseModel):
+    subject: str
+    body: str
+
+
+class EmailSignupPayload(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str | None = Field(default=None, max_length=200)
+
+
+class EmailSigninPayload(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+def require_user(request: Request) -> dict:
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user
+
+
 @app.get("/")
-def index() -> FileResponse:
+def index():
+    return FileResponse(STATIC_DIR / "start.html")
+
+
+@app.get("/app")
+def app_index(request: Request):
+    if not request.session.get("user"):
+        return RedirectResponse(url="/", status_code=303)
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/api/me")
+def me(request: Request) -> dict:
+    user = request.session.get("user")
+    return {"authenticated": bool(user), "user": user}
+
+
+@app.get("/auth/providers")
+def auth_providers() -> dict:
+    return {
+        "google": bool(settings.oauth_google_client_id and settings.oauth_google_client_secret),
+        "email": True,
+    }
+
+
 @app.get("/api/campaigns")
-def list_campaigns() -> dict:
+def list_campaigns(request: Request) -> dict:
+    require_user(request)
     campaigns = CampaignRepository().list_all()
     return {"campaigns": campaigns}
 
 
 @app.post("/api/campaigns")
-def create_campaign(payload: CreateCampaignPayload) -> dict:
+def create_campaign(payload: CreateCampaignPayload, request: Request) -> dict:
+    require_user(request)
     campaign_id = CampaignRepository().create(
         payload.name.strip(),
         payload.subject_template,
@@ -70,7 +133,8 @@ def create_campaign(payload: CreateCampaignPayload) -> dict:
 
 
 @app.get("/api/campaigns/{campaign_id}")
-def campaign_details(campaign_id: int) -> dict:
+def campaign_details(campaign_id: int, request: Request) -> dict:
+    require_user(request)
     campaign = CampaignRepository().get(campaign_id)
     if not campaign:
         return {"campaign": None, "drafts": []}
@@ -80,19 +144,33 @@ def campaign_details(campaign_id: int) -> dict:
 
 
 @app.post("/api/drafts/{draft_id}/approve")
-def approve_draft(draft_id: int, payload: ApproveDraftPayload) -> dict:
+def approve_draft(draft_id: int, payload: ApproveDraftPayload, request: Request) -> dict:
+    require_user(request)
     DraftRepository().approve_and_schedule(draft_id, _to_utc_iso(payload.scheduled_at))
     return {"ok": True, "draft_id": draft_id}
 
 
 @app.post("/api/drafts/{draft_id}/reject")
-def reject_draft(draft_id: int) -> dict:
+def reject_draft(draft_id: int, request: Request) -> dict:
+    require_user(request)
     DraftRepository().mark_rejected(draft_id)
     return {"ok": True, "draft_id": draft_id}
 
 
+@app.patch("/api/drafts/{draft_id}")
+def update_draft(draft_id: int, payload: UpdateDraftPayload, request: Request) -> dict:
+    require_user(request)
+    DraftRepository().update_content(
+        draft_id=draft_id,
+        subject=payload.subject.strip(),
+        body=payload.body.strip(),
+    )
+    return {"ok": True, "draft_id": draft_id}
+
+
 @app.post("/api/campaigns/{campaign_id}/send-due")
-def send_due_campaign(campaign_id: int, payload: SendDuePayload) -> dict:
+def send_due_campaign(campaign_id: int, payload: SendDuePayload, request: Request) -> dict:
+    require_user(request)
     sent, failed = send_due(dry_run=payload.dry_run)
     return {
         "ok": True,
@@ -104,7 +182,8 @@ def send_due_campaign(campaign_id: int, payload: SendDuePayload) -> dict:
 
 
 @app.post("/api/campaigns/{campaign_id}/generate-drafts")
-def generate_campaign_drafts(campaign_id: int, payload: GenerateDraftsPayload) -> dict:
+def generate_campaign_drafts(campaign_id: int, payload: GenerateDraftsPayload, request: Request) -> dict:
+    require_user(request)
     created, ignored = generate_drafts(campaign_id=campaign_id, limit=max(1, payload.limit))
     return {
         "ok": True,
@@ -115,8 +194,85 @@ def generate_campaign_drafts(campaign_id: int, payload: GenerateDraftsPayload) -
 
 
 @app.get("/api/templates/defaults")
-def default_templates() -> dict:
+def default_templates(request: Request) -> dict:
+    require_user(request)
     templates_dir = WEB_DIR.parents[2] / "templates"
     subject = (templates_dir / "subject_default.txt").read_text(encoding="utf-8")
     body = (templates_dir / "body_default.txt").read_text(encoding="utf-8")
     return {"subject_template": subject, "body_template": body}
+
+
+@app.post("/auth/email/signup")
+def auth_email_signup(request: Request, payload: EmailSignupPayload) -> dict:
+    repo = UserRepository()
+    email = payload.email.strip().lower()
+    existing = repo.get_by_email(email)
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already exists")
+
+    user_id = repo.create(
+        email=email,
+        password_hash=pwd_context.hash(payload.password),
+        full_name=(payload.full_name or "").strip() or None,
+    )
+    user = repo.get_by_id(user_id)
+    request.session["user"] = {
+        "provider": "email",
+        "sub": str(user_id),
+        "name": user.get("full_name") or user.get("email"),
+        "email": user.get("email"),
+        "picture": None,
+    }
+    return {"ok": True, "user": request.session["user"]}
+
+
+@app.post("/auth/email/signin")
+def auth_email_signin(request: Request, payload: EmailSigninPayload) -> dict:
+    repo = UserRepository()
+    email = payload.email.strip().lower()
+    user = repo.get_by_email(email)
+    if not user or not pwd_context.verify(payload.password, user.get("password_hash") or ""):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    request.session["user"] = {
+        "provider": "email",
+        "sub": str(user.get("id")),
+        "name": user.get("full_name") or user.get("email"),
+        "email": user.get("email"),
+        "picture": None,
+    }
+    return {"ok": True, "user": request.session["user"]}
+
+
+@app.get("/auth/login/google")
+async def auth_login_google(request: Request):
+    client = oauth.create_client("google")
+    if not client:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+    redirect_uri = f"{settings.app_base_url.rstrip('/')}/auth/callback/google"
+    return await client.authorize_redirect(request, redirect_uri)
+
+
+@app.get("/auth/callback/google")
+async def auth_callback_google(request: Request):
+    client = oauth.create_client("google")
+    if not client:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+
+    token = await client.authorize_access_token(request)
+    user_payload = token.get("userinfo") or await client.parse_id_token(request, token)
+
+    request.session["user"] = {
+        "provider": "google",
+        "sub": user_payload.get("sub"),
+        "name": user_payload.get("name"),
+        "email": user_payload.get("email"),
+        "picture": user_payload.get("picture"),
+    }
+    return RedirectResponse(url="/app", status_code=303)
+
+
+@app.post("/auth/logout")
+def auth_logout(request: Request) -> dict:
+    request.session.clear()
+    return {"ok": True}

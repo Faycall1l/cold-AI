@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>cold-AI · Sign In</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #0f172a;
+      --line: #24334f;
+      --text: #e7eefc;
+      --muted: #95a4c6;
+      --accent: #60a5fa;
+      --btn: #dbe9ff;
+      --btnText: #0b1c3a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      background: radial-gradient(1200px 500px at 20% -10%, #18345d 0%, transparent 60%), var(--bg);
+      color: var(--text);
+      padding: 18px;
+    }
+
+    .card {
+      width: min(460px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 8px 8px 0 var(--accent);
+      padding: 20px;
+    }
+
+    .brand {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    .sub {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .stack {
+      margin-top: 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .tabs {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .tab {
+      border: 0;
+      padding: 10px;
+      font: inherit;
+      background: #111b31;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: #1a2a49;
+      color: var(--text);
+    }
+
+    .form {
+      margin-top: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .input {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #111b31;
+      color: var(--text);
+      padding: 11px;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    .msg {
+      margin-top: 8px;
+      border: 1px solid #24559c;
+      background: #122442;
+      color: #b9d7ff;
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-size: 12px;
+      display: none;
+    }
+
+    .err {
+      border-color: #533030;
+      background: #2a1212;
+      color: #ffb3b3;
+    }
+
+    .btn {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #111b31;
+      color: var(--text);
+      padding: 12px;
+      text-align: center;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .btn.primary {
+      background: var(--btn);
+      color: var(--btnText);
+      border-color: var(--btn);
+    }
+
+    .note {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .footer {
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">cold-ai / secure access</div>
+    <h1 id="auth-title">Welcome back</h1>
+    <div id="auth-sub" class="sub">
+      Sign in to access campaigns, edit personalized drafts, and manage send workflows.
+    </div>
+
+    <div class="stack">
+      <a class="btn primary" href="/auth/login/google">Continue with Google</a>
+    </div>
+
+    <div class="tabs">
+      <button id="tab-signin" class="tab active" type="button">Email Sign In</button>
+      <button id="tab-signup" class="tab" type="button">Email Sign Up</button>
+    </div>
+
+    <form id="form-signin" class="form">
+      <input class="input" type="email" name="email" placeholder="Email" required />
+      <input class="input" type="password" name="password" placeholder="Password" minlength="8" required />
+      <button class="btn" type="submit">Sign In</button>
+    </form>
+
+    <form id="form-signup" class="form" style="display:none;">
+      <input class="input" type="text" name="full_name" placeholder="Full name (optional)" />
+      <input class="input" type="email" name="email" placeholder="Email" required />
+      <input class="input" type="password" name="password" placeholder="Password (min 8 chars)" minlength="8" required />
+      <button class="btn" type="submit">Create Account</button>
+    </form>
+
+    <div id="message" class="msg"></div>
+
+    <div class="note">
+      Google OAuth + email sign-in/sign-up are enabled entry options.
+    </div>
+
+    <div class="footer">Need setup help? Check README auth environment variables.</div>
+  </div>
+
+  <script>
+    const tabSignin = document.getElementById('tab-signin');
+    const tabSignup = document.getElementById('tab-signup');
+    const formSignin = document.getElementById('form-signin');
+    const formSignup = document.getElementById('form-signup');
+    const authTitle = document.getElementById('auth-title');
+    const authSub = document.getElementById('auth-sub');
+    const msg = document.getElementById('message');
+
+    function getErrorMessage(data, fallback) {
+      const detail = data?.detail;
+      if (Array.isArray(detail)) {
+        return detail
+          .map((item) => (item && typeof item === 'object' ? item.msg || JSON.stringify(item) : String(item)))
+          .join(' · ');
+      }
+      if (detail && typeof detail === 'object') {
+        return detail.message || JSON.stringify(detail);
+      }
+      if (typeof detail === 'string' && detail.trim()) {
+        return detail;
+      }
+      return fallback;
+    }
+
+    function showMessage(text, isError = false) {
+      msg.textContent = text;
+      msg.style.display = 'block';
+      msg.classList.toggle('err', isError);
+    }
+
+    function switchTab(tab) {
+      const signin = tab === 'signin';
+      tabSignin.classList.toggle('active', signin);
+      tabSignup.classList.toggle('active', !signin);
+      formSignin.style.display = signin ? 'grid' : 'none';
+      formSignup.style.display = signin ? 'none' : 'grid';
+      authTitle.textContent = signin ? 'Welcome back' : 'Create your account';
+      authSub.textContent = signin
+        ? 'Sign in to access campaigns, edit personalized drafts, and manage send workflows.'
+        : 'Create an account to start building campaigns and reviewing outreach drafts.';
+      msg.style.display = 'none';
+    }
+
+    tabSignin.addEventListener('click', () => switchTab('signin'));
+    tabSignup.addEventListener('click', () => switchTab('signup'));
+
+    formSignin.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(formSignin);
+      const payload = {
+        email: String(formData.get('email') || '').trim(),
+        password: String(formData.get('password') || '').trim(),
+      };
+      try {
+        const response = await fetch('/auth/email/signin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(getErrorMessage(data, 'Sign-in failed'));
+        }
+        showMessage('Signed in. Redirecting...');
+        window.location.href = '/app';
+      } catch (error) {
+        showMessage(error.message || 'Sign-in failed', true);
+      }
+    });
+
+    formSignup.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(formSignup);
+      const payload = {
+        full_name: String(formData.get('full_name') || '').trim(),
+        email: String(formData.get('email') || '').trim(),
+        password: String(formData.get('password') || '').trim(),
+      };
+      try {
+        const response = await fetch('/auth/email/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(getErrorMessage(data, 'Sign-up failed'));
+        }
+        showMessage('Account created. Redirecting...');
+        window.location.href = '/app';
+      } catch (error) {
+        showMessage(error.message || 'Sign-up failed', true);
+      }
+    });
+  </script>
+</body>
+</html>
