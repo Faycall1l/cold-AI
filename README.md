@@ -47,6 +47,9 @@ In the campaign page you can:
 - approve and schedule drafts
 - reject drafts
 - trigger `send due` in dry-run or real mode
+- generate drafts from the UI
+
+From the main dashboard you can now create campaigns directly (no CLI required for this step).
 
 The dashboard is a rich client (React) served by FastAPI, using JSON API routes under `/api/*`.
 
