@@ -52,11 +52,17 @@ In the campaign page you can:
 - apply quick personalization snippets and save edits
 - switch between `Grid`, `List`, and `Compact` draft views
 
-From the main dashboard you can now create campaigns directly (no CLI required for this step).
+From the main dashboard you can now create campaigns directly (no CLI required for this step), including campaign purpose.
+
+Campaign and draft guardrails are enforced server-side:
+
+- campaign name/subject/body length and normalization checks
+- optional campaign purpose validation
+- blocked-language filtering for campaign templates and manual draft edits
 
 The dashboard is a rich client (React) served by FastAPI, using JSON API routes under `/api/*`.
 
-## Auth (OAuth, no custom password system)
+## Auth (OAuth + email/password)
 
 This app uses Authlib OAuth providers with session-based access control.
 
@@ -117,6 +123,7 @@ cold-ai import-leads --csv-path data/doctors.csv
 ```bash
 cold-ai create-campaign \
   --name "Algeria Doctors Outreach" \
+  --purpose "Book discovery calls with priority clinics" \
   --subject-template templates/subject_default.txt \
   --body-template templates/body_default.txt
 ```

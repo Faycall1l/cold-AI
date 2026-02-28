@@ -39,6 +39,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS campaigns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                purpose TEXT,
                 subject_template TEXT NOT NULL,
                 body_template TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
@@ -80,6 +81,13 @@ def init_db() -> None:
             );
             """
         )
+
+        campaign_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(campaigns)").fetchall()
+        }
+        if "purpose" not in campaign_columns:
+            conn.execute("ALTER TABLE campaigns ADD COLUMN purpose TEXT")
 
         existing = conn.execute(
             "SELECT id FROM users WHERE lower(email) = lower(?)",

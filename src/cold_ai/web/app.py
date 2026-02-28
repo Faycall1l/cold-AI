@@ -15,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from ..config import settings
 from ..repositories import CampaignRepository, DraftRepository, UserRepository
 from ..services.draft_service import generate_drafts
+from ..services.guardrails import GuardrailError, validate_campaign_inputs, validate_draft_content
 from ..services.send_service import send_due
 
 app = FastAPI(title="cold-AI Review UI", version="0.1.1")
@@ -57,6 +58,7 @@ class SendDuePayload(BaseModel):
 
 class CreateCampaignPayload(BaseModel):
     name: str
+    purpose: str = ""
     subject_template: str
     body_template: str
 
@@ -124,10 +126,21 @@ def list_campaigns(request: Request) -> dict:
 @app.post("/api/campaigns")
 def create_campaign(payload: CreateCampaignPayload, request: Request) -> dict:
     require_user(request)
+    try:
+        validated = validate_campaign_inputs(
+            payload.name,
+            payload.purpose,
+            payload.subject_template,
+            payload.body_template,
+        )
+    except GuardrailError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
     campaign_id = CampaignRepository().create(
-        payload.name.strip(),
-        payload.subject_template,
-        payload.body_template,
+        validated["name"],
+        validated["purpose"] or None,
+        validated["subject_template"],
+        validated["body_template"],
     )
     return {"ok": True, "campaign_id": campaign_id}
 
@@ -160,10 +173,15 @@ def reject_draft(draft_id: int, request: Request) -> dict:
 @app.patch("/api/drafts/{draft_id}")
 def update_draft(draft_id: int, payload: UpdateDraftPayload, request: Request) -> dict:
     require_user(request)
+    try:
+        validated = validate_draft_content(payload.subject, payload.body)
+    except GuardrailError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
     DraftRepository().update_content(
         draft_id=draft_id,
-        subject=payload.subject.strip(),
-        body=payload.body.strip(),
+        subject=validated["subject"],
+        body=validated["body"],
     )
     return {"ok": True, "draft_id": draft_id}
 

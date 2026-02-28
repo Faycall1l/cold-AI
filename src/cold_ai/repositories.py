@@ -58,14 +58,14 @@ class LeadRepository:
 
 
 class CampaignRepository:
-    def create(self, name: str, subject_template: str, body_template: str) -> int:
+    def create(self, name: str, purpose: str | None, subject_template: str, body_template: str) -> int:
         with get_connection() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO campaigns (name, subject_template, body_template)
-                VALUES (?, ?, ?)
+                INSERT INTO campaigns (name, purpose, subject_template, body_template)
+                VALUES (?, ?, ?, ?)
                 """,
-                (name, subject_template, body_template),
+                (name, purpose, subject_template, body_template),
             )
             return int(cursor.lastrowid)
 

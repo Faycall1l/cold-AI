@@ -7,6 +7,14 @@ async function api(path, options = {}) {
     ...options,
   });
   if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const detail = payload && payload.detail;
+    if (typeof detail === "string" && detail.trim()) {
+      throw new Error(detail);
+    }
+    if (Array.isArray(detail) && detail.length) {
+      throw new Error(detail.map((item) => item?.msg || String(item)).join(" · "));
+    }
     throw new Error(`API error: ${response.status}`);
   }
   return response.json();
@@ -36,6 +44,7 @@ function App() {
 
   const [createForm, setCreateForm] = useState({
     name: "",
+    purpose: "",
     subject_template: "",
     body_template: "",
   });
@@ -226,6 +235,7 @@ function App() {
   async function createCampaign() {
     const payload = {
       name: createForm.name.trim(),
+      purpose: createForm.purpose.trim(),
       subject_template: createForm.subject_template,
       body_template: createForm.body_template,
     };
@@ -241,7 +251,7 @@ function App() {
         body: JSON.stringify(payload),
       });
       setShowCreateModal(false);
-      setCreateForm((prev) => ({ ...prev, name: "" }));
+      setCreateForm((prev) => ({ ...prev, name: "", purpose: "" }));
       setMessage(`Campaign created (#${result.campaign_id}).`);
       setError("");
       await loadCampaigns();
@@ -270,7 +280,13 @@ function App() {
     React.createElement("div", { className: "topbar" },
       React.createElement("div", null,
         React.createElement("h1", { className: "title" }, selectedCampaign ? selectedCampaign.name : "Campaigns"),
-        React.createElement("div", { className: "subtitle" }, "Run outreach workflows with a click-first control panel")
+        React.createElement(
+          "div",
+          { className: "subtitle" },
+          selectedCampaign && selectedCampaign.purpose
+            ? selectedCampaign.purpose
+            : "Run outreach workflows with a click-first control panel",
+        )
       ),
       React.createElement("div", { className: "row" },
         currentUser && React.createElement("div", { className: "user-chip" }, currentUser.email || currentUser.name || "User"),
@@ -361,6 +377,7 @@ function CampaignList({ campaigns, onOpen, draftLimit, setDraftLimit, onGenerate
             },
             React.createElement("div", { className: "menu-title" }, campaign.name),
             React.createElement("div", { className: "menu-meta" }, `#${campaign.id} · ${campaign.status}`),
+            campaign.purpose && React.createElement("div", { className: "menu-meta" }, campaign.purpose),
             React.createElement("div", { className: "menu-actions" },
               React.createElement(
                 "button",
@@ -605,6 +622,17 @@ function CreateCampaignModal({ form, setForm, onClose, onCreate }) {
           value: form.name,
           onChange: (event) => setForm((prev) => ({ ...prev, name: event.target.value })),
           placeholder: "Algeria Doctors Outreach",
+        })
+      ),
+
+      React.createElement("div", { className: "field" },
+        React.createElement("label", { className: "muted" }, "Campaign Purpose"),
+        React.createElement("textarea", {
+          className: "input",
+          rows: 2,
+          value: form.purpose,
+          onChange: (event) => setForm((prev) => ({ ...prev, purpose: event.target.value })),
+          placeholder: "Why this campaign exists and what outcome you want",
         })
       ),
 
