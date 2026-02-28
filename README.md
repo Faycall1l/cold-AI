@@ -8,9 +8,33 @@ Phase 1 MVP of an agentic cold outreach system focused on:
 - Scheduling
 - Sending due emails (dry-run or SMTP)
 
+## Personalization Engine (Phase 1.2)
+
+Draft generation now follows a multi-step agent flow:
+
+1. lead intelligence normalization
+2. specialty template routing
+3. optional web research snippet lookup
+4. deterministic template drafting
+5. optional LLM rewrite pass with quality gate
+6. fallback to deterministic draft if rewrite confidence is low or provider fails
+
+### Optional environment flags
+
+```bash
+export COLD_AI_ENABLE_WEB_RESEARCH="true"
+export COLD_AI_ENABLE_LLM_REWRITE="true"
+
+export COLD_AI_LLM_API_KEY="..."
+export COLD_AI_LLM_BASE_URL="https://api.openai.com/v1"
+export COLD_AI_LLM_MODELS="gpt-4o-mini,gpt-4.1-mini"
+```
+
+If `COLD_AI_ENABLE_LLM_REWRITE=false` or no API key is set, drafts are still generated via deterministic templates.
+
 ## Phase 1.1: Web Review UI
 
-You can review/approve/reject drafts in a browser instead of CSV.
+You can review/approve/reject drafts in a React dashboard instead of CSV.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m cold_ai.cli review-ui --host 127.0.0.1 --port 8000
@@ -23,6 +47,8 @@ In the campaign page you can:
 - approve and schedule drafts
 - reject drafts
 - trigger `send due` in dry-run or real mode
+
+The dashboard is a rich client (React) served by FastAPI, using JSON API routes under `/api/*`.
 
 ## 1) Setup
 
@@ -121,3 +147,4 @@ cold-ai send-due
 
 - Phase 1 is intentionally human-in-the-loop before sending.
 - Follow-ups, analytics, and advanced enrichment are Phase 2+.
+- OSS-inspired architecture references are in `docs/OSS_REFERENCES.md`.

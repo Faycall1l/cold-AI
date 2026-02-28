@@ -1,0 +1,13 @@
+Hello Dr. {{ full_name }},
+
+I’m sharing this because practices in {{ city }} often ask for a simpler way to manage outreach and follow-ups.
+
+{{ product_name }} supports consistent personalized messaging across patient/professional contact lists.
+
+Resource:
+{{ resource_link }}
+
+If you’d like, I can share a 2-minute walkthrough tailored to {{ specialty }} workflows.
+
+Best,
+{{ sender_name }}

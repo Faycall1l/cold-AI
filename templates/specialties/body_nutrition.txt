@@ -1,0 +1,13 @@
+Hello Dr. {{ full_name }},
+
+I’m reaching out because your work in {{ specialty }} stood out.
+
+We built {{ product_name }} to help healthcare teams automate personalized communication and follow-ups without sounding generic.
+
+Useful reading:
+{{ resource_link }}
+
+If relevant, I can send a concise example campaign adapted to {{ specialty }}.
+
+Best regards,
+{{ sender_name }}

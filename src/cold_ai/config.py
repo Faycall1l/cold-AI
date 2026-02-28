@@ -17,5 +17,16 @@ class Settings:
     smtp_from: str | None = os.getenv("COLD_AI_SMTP_FROM")
     smtp_starttls: bool = os.getenv("COLD_AI_SMTP_STARTTLS", "true").lower() == "true"
 
+    enable_web_research: bool = os.getenv("COLD_AI_ENABLE_WEB_RESEARCH", "false").lower() == "true"
+    enable_llm_rewrite: bool = os.getenv("COLD_AI_ENABLE_LLM_REWRITE", "false").lower() == "true"
+
+    llm_base_url: str = os.getenv("COLD_AI_LLM_BASE_URL", "https://api.openai.com/v1")
+    llm_api_key: str | None = os.getenv("COLD_AI_LLM_API_KEY")
+    llm_models: tuple[str, ...] = tuple(
+        model.strip()
+        for model in os.getenv("COLD_AI_LLM_MODELS", "gpt-4o-mini,gpt-4.1-mini").split(",")
+        if model.strip()
+    )
+
 
 settings = Settings()

@@ -4,17 +4,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dateutil import parser
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from ..repositories import CampaignRepository, DraftRepository
 from ..services.send_service import send_due
 
 app = FastAPI(title="cold-AI Review UI", version="0.1.1")
 
-TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "templates" / "web"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+WEB_DIR = Path(__file__).resolve().parent
+STATIC_DIR = WEB_DIR / "static"
+
+app.mount("/assets", StaticFiles(directory=str(STATIC_DIR)), name="assets")
 
 
 def _to_utc_iso(value: str) -> str:
@@ -26,46 +29,54 @@ def _to_utc_iso(value: str) -> str:
     return dt.astimezone(timezone.utc).isoformat()
 
 
+class ApproveDraftPayload(BaseModel):
+    scheduled_at: str = ""
+
+
+class SendDuePayload(BaseModel):
+    dry_run: bool = True
+
+
 @app.get("/")
-def index(request: Request):
+def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/campaigns")
+def list_campaigns() -> dict:
     campaigns = CampaignRepository().list_all()
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {"campaigns": campaigns},
-    )
+    return {"campaigns": campaigns}
 
 
-@app.get("/campaigns/{campaign_id}")
-def campaign_details(request: Request, campaign_id: int):
+@app.get("/api/campaigns/{campaign_id}")
+def campaign_details(campaign_id: int) -> dict:
     campaign = CampaignRepository().get(campaign_id)
     if not campaign:
-        return RedirectResponse(url="/", status_code=303)
+        return {"campaign": None, "drafts": []}
 
     drafts = DraftRepository().list_for_campaign(campaign_id)
-    return templates.TemplateResponse(
-        request,
-        "campaign.html",
-        {
-            "campaign": campaign,
-            "drafts": drafts,
-        },
-    )
+    return {"campaign": campaign, "drafts": drafts}
 
 
-@app.post("/drafts/{draft_id}/approve")
-def approve_draft(draft_id: int, campaign_id: int = Form(...), scheduled_at: str = Form("")):
-    DraftRepository().approve_and_schedule(draft_id, _to_utc_iso(scheduled_at))
-    return RedirectResponse(url=f"/campaigns/{campaign_id}", status_code=303)
+@app.post("/api/drafts/{draft_id}/approve")
+def approve_draft(draft_id: int, payload: ApproveDraftPayload) -> dict:
+    DraftRepository().approve_and_schedule(draft_id, _to_utc_iso(payload.scheduled_at))
+    return {"ok": True, "draft_id": draft_id}
 
 
-@app.post("/drafts/{draft_id}/reject")
-def reject_draft(draft_id: int, campaign_id: int = Form(...)):
+@app.post("/api/drafts/{draft_id}/reject")
+def reject_draft(draft_id: int) -> dict:
     DraftRepository().mark_rejected(draft_id)
-    return RedirectResponse(url=f"/campaigns/{campaign_id}", status_code=303)
+    return {"ok": True, "draft_id": draft_id}
 
 
-@app.post("/campaigns/{campaign_id}/send-due")
-def send_due_campaign(campaign_id: int, dry_run: str = Form("true")):
-    send_due(dry_run=dry_run.lower() == "true")
-    return RedirectResponse(url=f"/campaigns/{campaign_id}", status_code=303)
+@app.post("/api/campaigns/{campaign_id}/send-due")
+def send_due_campaign(campaign_id: int, payload: SendDuePayload) -> dict:
+    sent, failed = send_due(dry_run=payload.dry_run)
+    return {
+        "ok": True,
+        "campaign_id": campaign_id,
+        "dry_run": payload.dry_run,
+        "sent": sent,
+        "failed": failed,
+    }

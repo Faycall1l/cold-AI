@@ -1,0 +1,20 @@
+Hello Dr. {{ full_name }},
+
+I noticed your practice focus in {{ city }} and thought I’d share something practical for {{ specialty }} outreach.
+
+{{ product_name }} helps teams organize contact lists, generate personalized messages, and schedule follow-ups while keeping a natural human tone.
+
+{% if research_snippet %}
+One public note I found: {{ research_snippet }}
+{% endif %}
+
+Useful resource:
+{{ resource_link }}
+{% if research_source_link %}
+Reference source: {{ research_source_link }}
+{% endif %}
+
+If you’re open, I can share a short example flow adapted to dental practices.
+
+Best,
+{{ sender_name }}
