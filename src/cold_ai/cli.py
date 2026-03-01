@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+import shutil
+import socket
+import subprocess
 from pathlib import Path
 
 import typer
@@ -13,6 +17,35 @@ from .services.send_service import send_due
 from .web.app import app as web_app
 
 app = typer.Typer(help="cold-AI Phase 1 CLI")
+
+
+def _port_is_busy(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.25)
+        return sock.connect_ex((host, port)) == 0
+
+
+def _free_port(port: int) -> int:
+    if shutil.which("lsof") is None:
+        return 0
+
+    process = subprocess.run(
+        ["lsof", "-ti", f"tcp:{port}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    pids = [line.strip() for line in process.stdout.splitlines() if line.strip()]
+    killed = 0
+    for pid in pids:
+        if pid == str(os.getpid()):
+            continue
+        try:
+            os.kill(int(pid), 9)
+            killed += 1
+        except Exception:
+            continue
+    return killed
 
 
 @app.command("init-db")
@@ -69,8 +102,26 @@ def send_due_command(dry_run: bool = typer.Option(False)) -> None:
 def review_ui_command(
     host: str = typer.Option("127.0.0.1"),
     port: int = typer.Option(8000),
+    auto_free_port: bool = typer.Option(True, "--auto-free-port/--no-auto-free-port"),
 ) -> None:
     import uvicorn
+
+    if _port_is_busy(host, port):
+        if auto_free_port:
+            killed = _free_port(port)
+            if killed:
+                typer.echo(f"Freed port {port} by terminating {killed} process(es)")
+            else:
+                typer.echo(
+                    f"Port {port} is busy and no process was terminated automatically. "
+                    "Retry with a different port or free it manually."
+                )
+        else:
+            typer.echo(
+                f"Port {port} is already in use. "
+                "Use --auto-free-port or choose a different --port."
+            )
+            raise typer.Exit(code=1)
 
     uvicorn.run(web_app, host=host, port=port)
 

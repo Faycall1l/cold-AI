@@ -42,6 +42,18 @@ PYTHONPATH=src .venv/bin/python -m cold_ai.cli review-ui --host 127.0.0.1 --port
 
 Open `http://127.0.0.1:8000` (global start page). Authenticated app is at `/app`.
 
+`review-ui` now auto-frees a busy port by default. To disable this behavior:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m cold_ai.cli review-ui --host 127.0.0.1 --port 8000 --no-auto-free-port
+```
+
+Health check endpoint:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
 In the campaign page you can:
 
 - approve and schedule drafts

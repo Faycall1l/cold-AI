@@ -117,6 +117,11 @@ def me(request: Request) -> dict:
     return {"authenticated": bool(user), "user": user}
 
 
+@app.get("/health")
+def health() -> dict:
+    return {"ok": True, "service": "cold-ai-review-ui"}
+
+
 @app.get("/auth/providers")
 def auth_providers() -> dict:
     return {
