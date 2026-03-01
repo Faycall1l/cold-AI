@@ -33,7 +33,13 @@ function App() {
   const [sendMode, setSendMode] = useState("dry");
   const [scheduleByDraft, setScheduleByDraft] = useState({});
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [draftLimit, setDraftLimit] = useState(100);
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: "",
+    new_password: "",
+    confirm_password: "",
+  });
 
   const [selectedDraftId, setSelectedDraftId] = useState(null);
   const [editorSubject, setEditorSubject] = useState("");
@@ -275,6 +281,37 @@ function App() {
     window.location.href = "/";
   }
 
+  async function changePassword() {
+    if (!passwordForm.current_password || !passwordForm.new_password) {
+      setError("Current and new password are required.");
+      return;
+    }
+    if (passwordForm.new_password.length < 8) {
+      setError("New password must be at least 8 characters.");
+      return;
+    }
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      setError("Password confirmation does not match.");
+      return;
+    }
+
+    try {
+      await api("/auth/email/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: passwordForm.current_password,
+          new_password: passwordForm.new_password,
+        }),
+      });
+      setShowPasswordModal(false);
+      setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
+      setMessage("Password updated successfully.");
+      setError("");
+    } catch (err) {
+      setError(String(err.message || err));
+    }
+  }
+
   return React.createElement("div", { className: "container" },
     React.createElement("div", { className: "crumb" }, "cold-ai / dashboard"),
     React.createElement("div", { className: "topbar" },
@@ -290,6 +327,7 @@ function App() {
       ),
       React.createElement("div", { className: "row" },
         currentUser && React.createElement("div", { className: "user-chip" }, currentUser.email || currentUser.name || "User"),
+        currentUser && currentUser.provider === "email" && React.createElement("button", { className: "btn btn-soft btn-top", onClick: () => setShowPasswordModal(true) }, "Change Password"),
         !selectedCampaign && React.createElement("button", { className: "btn btn-dark btn-top", onClick: () => setShowCreateModal(true) }, "Create Campaign"),
         selectedCampaign && React.createElement("button", { className: "btn btn-soft btn-top", onClick: goHome }, "Back"),
         React.createElement("button", { className: "btn btn-soft btn-top", onClick: logout }, "Logout")
@@ -343,6 +381,13 @@ function App() {
       setForm: setCreateForm,
       onClose: () => setShowCreateModal(false),
       onCreate: createCampaign,
+    }),
+
+    showPasswordModal && React.createElement(ChangePasswordModal, {
+      form: passwordForm,
+      setForm: setPasswordForm,
+      onClose: () => setShowPasswordModal(false),
+      onSubmit: changePassword,
     })
   );
 }
@@ -659,6 +704,50 @@ function CreateCampaignModal({ form, setForm, onClose, onCreate }) {
       React.createElement("div", { className: "row", style: { justifyContent: "flex-end" } },
         React.createElement("button", { className: "btn btn-soft", onClick: onClose }, "Cancel"),
         React.createElement("button", { className: "btn btn-dark", onClick: onCreate }, "Create")
+      )
+    )
+  );
+}
+
+function ChangePasswordModal({ form, setForm, onClose, onSubmit }) {
+  return React.createElement("div", { className: "modal-overlay", onClick: onClose },
+    React.createElement("div", { className: "modal", onClick: (event) => event.stopPropagation() },
+      React.createElement("h3", { className: "modal-title" }, "Change Password"),
+      React.createElement("div", { className: "muted", style: { marginBottom: "10px" } }, "Update your email account password."),
+
+      React.createElement("div", { className: "field" },
+        React.createElement("label", { className: "muted" }, "Current Password"),
+        React.createElement("input", {
+          className: "input",
+          type: "password",
+          value: form.current_password,
+          onChange: (event) => setForm((prev) => ({ ...prev, current_password: event.target.value })),
+        })
+      ),
+
+      React.createElement("div", { className: "field" },
+        React.createElement("label", { className: "muted" }, "New Password"),
+        React.createElement("input", {
+          className: "input",
+          type: "password",
+          value: form.new_password,
+          onChange: (event) => setForm((prev) => ({ ...prev, new_password: event.target.value })),
+        })
+      ),
+
+      React.createElement("div", { className: "field" },
+        React.createElement("label", { className: "muted" }, "Confirm New Password"),
+        React.createElement("input", {
+          className: "input",
+          type: "password",
+          value: form.confirm_password,
+          onChange: (event) => setForm((prev) => ({ ...prev, confirm_password: event.target.value })),
+        })
+      ),
+
+      React.createElement("div", { className: "row", style: { justifyContent: "flex-end" } },
+        React.createElement("button", { className: "btn btn-soft", onClick: onClose }, "Cancel"),
+        React.createElement("button", { className: "btn btn-dark", onClick: onSubmit }, "Update Password")
       )
     )
   );

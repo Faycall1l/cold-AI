@@ -24,7 +24,11 @@ WEB_DIR = Path(__file__).resolve().parent
 STATIC_DIR = WEB_DIR / "static"
 
 app.mount("/assets", StaticFiles(directory=str(STATIC_DIR)), name="assets")
-app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret,
+    max_age=settings.session_max_age_seconds,
+)
 
 oauth = OAuth()
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -81,6 +85,11 @@ class EmailSignupPayload(BaseModel):
 class EmailSigninPayload(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+
+
+class ChangePasswordPayload(BaseModel):
+    current_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 def require_user(request: Request) -> dict:
@@ -260,6 +269,28 @@ def auth_email_signin(request: Request, payload: EmailSigninPayload) -> dict:
         "picture": None,
     }
     return {"ok": True, "user": request.session["user"]}
+
+
+@app.post("/auth/email/change-password")
+def auth_email_change_password(request: Request, payload: ChangePasswordPayload) -> dict:
+    session_user = require_user(request)
+    if session_user.get("provider") != "email":
+        raise HTTPException(status_code=400, detail="Password change is only available for email accounts")
+
+    user_id = int(session_user.get("sub"))
+    repo = UserRepository()
+    user = repo.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    current_hash = user.get("password_hash") or ""
+    if not pwd_context.verify(payload.current_password, current_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=422, detail="New password must be different from current password")
+
+    repo.update_password_hash(user_id, pwd_context.hash(payload.new_password))
+    return {"ok": True}
 
 
 @app.get("/auth/login/google")

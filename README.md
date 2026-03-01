@@ -71,6 +71,7 @@ Set these env vars before running:
 ```bash
 export COLD_AI_SESSION_SECRET="replace-with-long-random-secret"
 export COLD_AI_APP_BASE_URL="http://127.0.0.1:8000"
+export COLD_AI_SESSION_MAX_AGE_SECONDS="86400"
 
 # Google OAuth (optional but recommended)
 export COLD_AI_OAUTH_GOOGLE_CLIENT_ID="..."
@@ -81,6 +82,8 @@ Sign-in options:
 
 - Google OAuth
 - Email/password sign-up and sign-in forms (built into the start page)
+
+Email accounts can change password from the dashboard (`Change Password` button in top bar).
 
 ## 1) Setup
 

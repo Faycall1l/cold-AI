@@ -216,3 +216,10 @@ class UserRepository:
         with get_connection() as conn:
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(row) if row else None
+
+    def update_password_hash(self, user_id: int, password_hash: str) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (password_hash, user_id),
+            )
