@@ -303,6 +303,12 @@ function App() {
       setSelectedCampaignId(null);
       setSelectedDraftId(null);
     }
+    if (tabName === "scripts") {
+      resetTemplateForm("script");
+    }
+    if (tabName === "descriptions") {
+      resetTemplateForm("product");
+    }
   }
 
   async function logout() {
@@ -341,8 +347,8 @@ function App() {
     }
   }
 
-  function resetTemplateForm() {
-    setTemplateForm({ title: "", category: "script", content: "" });
+  function resetTemplateForm(defaultCategory = "script") {
+    setTemplateForm({ title: "", category: defaultCategory, content: "" });
     setEditingTemplateId(null);
   }
 
@@ -353,21 +359,29 @@ function App() {
     }
 
     try {
+      const payload = { ...templateForm };
+      if (activeTab === "scripts") {
+        payload.category = "script";
+      }
+      if (activeTab === "descriptions" && payload.category === "script") {
+        payload.category = "product";
+      }
+
       if (editingTemplateId) {
         await api(`/api/template-library/${editingTemplateId}`, {
           method: "PATCH",
-          body: JSON.stringify(templateForm),
+          body: JSON.stringify(payload),
         });
         setMessage("Template entry updated.");
       } else {
         await api("/api/template-library", {
           method: "POST",
-          body: JSON.stringify(templateForm),
+          body: JSON.stringify(payload),
         });
         setMessage("Template entry created.");
       }
       setError("");
-      resetTemplateForm();
+      resetTemplateForm(activeTab === "scripts" ? "script" : "product");
       await loadTemplateLibrary();
     } catch (err) {
       setError(String(err.message || err));
@@ -397,28 +411,54 @@ function App() {
     }
   }
 
-  const headerTitle = activeTab === "templates"
-    ? "Templates"
-    : (selectedCampaign ? selectedCampaign.name : "Campaigns");
-  const headerSubtitle = activeTab === "templates"
-    ? "Store reusable scripts and product/service descriptions"
-    : (selectedCampaign && selectedCampaign.purpose
-      ? selectedCampaign.purpose
-      : "Run outreach workflows with a click-first control panel");
+  const scriptEntries = templateEntries.filter((entry) => entry.category === "script");
+  const descriptionEntries = templateEntries.filter((entry) => entry.category === "product" || entry.category === "service");
+
+  const headerTitle = activeTab === "scripts"
+    ? "Scripts"
+    : activeTab === "descriptions"
+      ? "Descriptions"
+      : activeTab === "settings"
+        ? "Settings"
+      : (selectedCampaign ? selectedCampaign.name : "Campaigns");
+  const headerSubtitle = activeTab === "scripts"
+    ? "Store reusable outreach scripts"
+    : activeTab === "descriptions"
+      ? "Store product and service descriptions"
+      : activeTab === "settings"
+        ? "Account and workspace preferences"
+      : (selectedCampaign && selectedCampaign.purpose
+        ? selectedCampaign.purpose
+        : "Run outreach workflows with a click-first control panel");
 
   return React.createElement("div", { className: "container" },
     React.createElement("div", { className: "crumb" }, "cold-ai / workspace"),
     React.createElement("div", { className: "app-shell" },
       React.createElement("aside", { className: "sidebar card" },
-        React.createElement("div", { className: "sidebar-title" }, "Navigation"),
-        React.createElement("button", {
-          className: `nav-item ${activeTab === "campaigns" ? "active" : ""}`,
-          onClick: () => switchTab("campaigns"),
-        }, "Campaigns"),
-        React.createElement("button", {
-          className: `nav-item ${activeTab === "templates" ? "active" : ""}`,
-          onClick: () => switchTab("templates"),
-        }, "Templates")
+        React.createElement("div", { className: "sidebar-main" },
+          React.createElement("div", { className: "sidebar-title" }, "Navigation"),
+          React.createElement("button", {
+            className: `nav-item ${activeTab === "campaigns" ? "active" : ""}`,
+            onClick: () => switchTab("campaigns"),
+          }, "Campaigns"),
+          React.createElement("button", {
+            className: `nav-item ${activeTab === "scripts" ? "active" : ""}`,
+            onClick: () => switchTab("scripts"),
+          }, "Scripts"),
+          React.createElement("button", {
+            className: `nav-item ${activeTab === "descriptions" ? "active" : ""}`,
+            onClick: () => switchTab("descriptions"),
+          }, "Descriptions")
+          ,
+          React.createElement("button", {
+            className: `nav-item ${activeTab === "settings" ? "active" : ""}`,
+            onClick: () => switchTab("settings"),
+          }, "Settings")
+        ),
+        React.createElement("div", { className: "sidebar-footer" },
+          currentUser && currentUser.provider === "email" && React.createElement("button", { className: "btn btn-soft nav-footer-btn", onClick: () => setShowPasswordModal(true) }, "Change Password"),
+          React.createElement("button", { className: "btn btn-soft nav-footer-btn", onClick: logout }, "Logout")
+        )
       ),
 
       React.createElement("main", { className: "main-pane" },
@@ -429,10 +469,8 @@ function App() {
           ),
           React.createElement("div", { className: "row" },
             currentUser && React.createElement("div", { className: "user-chip" }, currentUser.email || currentUser.name || "User"),
-            currentUser && currentUser.provider === "email" && React.createElement("button", { className: "btn btn-soft btn-top", onClick: () => setShowPasswordModal(true) }, "Change Password"),
             activeTab === "campaigns" && !selectedCampaign && React.createElement("button", { className: "btn btn-dark btn-top", onClick: () => setShowCreateModal(true) }, "Create Campaign"),
-            activeTab === "campaigns" && selectedCampaign && React.createElement("button", { className: "btn btn-soft btn-top", onClick: goHome }, "Back"),
-            React.createElement("button", { className: "btn btn-soft btn-top", onClick: logout }, "Logout")
+            activeTab === "campaigns" && selectedCampaign && React.createElement("button", { className: "btn btn-soft btn-top", onClick: goHome }, "Back")
           )
         ),
 
@@ -478,15 +516,33 @@ function App() {
           onApplyQuickPersonalization: applyQuickPersonalization,
         }),
 
-        activeTab === "templates" && React.createElement(TemplatesPage, {
-          entries: templateEntries,
+        activeTab === "scripts" && React.createElement(TemplatesPage, {
+          pageType: "scripts",
+          entries: scriptEntries,
           form: templateForm,
           setForm: setTemplateForm,
           editingId: editingTemplateId,
           onSave: saveTemplateEntry,
-          onCancelEdit: resetTemplateForm,
+          onCancelEdit: () => resetTemplateForm("script"),
           onEdit: editTemplateEntry,
           onDelete: deleteTemplateEntry,
+        }),
+
+        activeTab === "descriptions" && React.createElement(TemplatesPage, {
+          pageType: "descriptions",
+          entries: descriptionEntries,
+          form: templateForm,
+          setForm: setTemplateForm,
+          editingId: editingTemplateId,
+          onSave: saveTemplateEntry,
+          onCancelEdit: () => resetTemplateForm("product"),
+          onEdit: editTemplateEntry,
+          onDelete: deleteTemplateEntry,
+        }),
+
+        activeTab === "settings" && React.createElement(SettingsPage, {
+          currentUser,
+          onOpenPasswordModal: () => setShowPasswordModal(true),
         })
       )
     ),
@@ -507,7 +563,29 @@ function App() {
   );
 }
 
-function TemplatesPage({ entries, form, setForm, editingId, onSave, onCancelEdit, onEdit, onDelete }) {
+function SettingsPage({ currentUser, onOpenPasswordModal }) {
+  return React.createElement("div", { className: "card controls-card" },
+    React.createElement("div", { className: "field" },
+      React.createElement("div", { className: "muted" }, "Signed in as"),
+      React.createElement("div", { className: "template-title", style: { marginTop: "6px" } }, currentUser?.email || currentUser?.name || "User")
+    ),
+    React.createElement("div", { className: "field" },
+      React.createElement("div", { className: "muted" }, "Provider"),
+      React.createElement("div", { className: "menu-meta", style: { margin: "6px 0 0 0" } }, currentUser?.provider || "unknown")
+    ),
+    currentUser?.provider === "email" && React.createElement("div", { className: "row", style: { marginTop: "8px" } },
+      React.createElement("button", { className: "btn btn-soft", onClick: onOpenPasswordModal }, "Change Password")
+    )
+  );
+}
+
+function TemplatesPage({ pageType, entries, form, setForm, editingId, onSave, onCancelEdit, onEdit, onDelete }) {
+  const isScripts = pageType === "scripts";
+  const titlePlaceholder = isScripts ? "Dentist follow-up script" : "Service overview";
+  const contentPlaceholder = isScripts
+    ? "Write the reusable script here..."
+    : "Write the reusable product/service description here...";
+
   return React.createElement(React.Fragment, null,
     React.createElement("div", { className: "card controls-card", style: { marginBottom: "12px" } },
       React.createElement("div", { className: "field" },
@@ -516,18 +594,17 @@ function TemplatesPage({ entries, form, setForm, editingId, onSave, onCancelEdit
           className: "input",
           value: form.title,
           onChange: (event) => setForm((prev) => ({ ...prev, title: event.target.value })),
-          placeholder: "Dentist follow-up script",
+          placeholder: titlePlaceholder,
         })
       ),
-      React.createElement("div", { className: "field" },
+      !isScripts && React.createElement("div", { className: "field" },
         React.createElement("label", { className: "muted" }, "Category"),
         React.createElement("select", {
           className: "select",
           style: { maxWidth: "240px" },
-          value: form.category,
+          value: form.category === "script" ? "product" : form.category,
           onChange: (event) => setForm((prev) => ({ ...prev, category: event.target.value })),
         },
-          React.createElement("option", { value: "script" }, "Script"),
           React.createElement("option", { value: "product" }, "Product Description"),
           React.createElement("option", { value: "service" }, "Service Description")
         )
@@ -539,7 +616,7 @@ function TemplatesPage({ entries, form, setForm, editingId, onSave, onCancelEdit
           rows: 7,
           value: form.content,
           onChange: (event) => setForm((prev) => ({ ...prev, content: event.target.value })),
-          placeholder: "Write the reusable script or description here...",
+          placeholder: contentPlaceholder,
         })
       ),
       React.createElement("div", { className: "row" },
@@ -549,7 +626,7 @@ function TemplatesPage({ entries, form, setForm, editingId, onSave, onCancelEdit
     ),
 
     !entries.length
-      ? React.createElement("div", { className: "card empty" }, "No template entries yet. Add scripts or product/service descriptions above.")
+      ? React.createElement("div", { className: "card empty" }, isScripts ? "No scripts yet. Add reusable scripts above." : "No descriptions yet. Add product/service descriptions above.")
       : React.createElement("div", { className: "template-grid" },
           entries.map((entry) => React.createElement("div", { key: entry.id, className: "card template-card" },
             React.createElement("div", { className: "template-top" },

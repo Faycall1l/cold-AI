@@ -40,6 +40,31 @@ button {
 
 .sidebar {
   padding: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+}
+
+.sidebar-main {
+  display: block;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.nav-footer-btn {
+  width: 100%;
 }
 
 .sidebar-title {
@@ -451,6 +476,8 @@ textarea.input {
   .sidebar {
     position: sticky;
     top: 12px;
+    height: calc(100vh - 24px);
+    max-height: calc(100vh - 24px);
   }
 
   .menu-grid {
