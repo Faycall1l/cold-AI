@@ -223,3 +223,57 @@ class UserRepository:
                 "UPDATE users SET password_hash = ? WHERE id = ?",
                 (password_hash, user_id),
             )
+
+
+class TemplateLibraryRepository:
+    def list_by_owner(self, owner_key: str) -> list[dict]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM template_library
+                WHERE owner_key = ?
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (owner_key,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def create(self, owner_key: str, title: str, category: str, content: str) -> int:
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO template_library (owner_key, title, category, content)
+                VALUES (?, ?, ?, ?)
+                """,
+                (owner_key, title, category, content),
+            )
+            return int(cursor.lastrowid)
+
+    def get_by_id_for_owner(self, entry_id: int, owner_key: str) -> dict | None:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM template_library WHERE id = ? AND owner_key = ?",
+                (entry_id, owner_key),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_for_owner(self, entry_id: int, owner_key: str, title: str, category: str, content: str) -> bool:
+        with get_connection() as conn:
+            result = conn.execute(
+                """
+                UPDATE template_library
+                SET title = ?, category = ?, content = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND owner_key = ?
+                """,
+                (title, category, content, entry_id, owner_key),
+            )
+            return result.rowcount > 0
+
+    def delete_for_owner(self, entry_id: int, owner_key: str) -> bool:
+        with get_connection() as conn:
+            result = conn.execute(
+                "DELETE FROM template_library WHERE id = ? AND owner_key = ?",
+                (entry_id, owner_key),
+            )
+            return result.rowcount > 0

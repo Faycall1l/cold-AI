@@ -66,6 +66,11 @@ In the campaign page you can:
 
 From the main dashboard you can now create campaigns directly (no CLI required for this step), including campaign purpose.
 
+The app now includes sidebar navigation with dedicated tabs:
+
+- `Campaigns`: create and manage outreach campaigns/drafts
+- `Templates`: store reusable scripts and product/service descriptions
+
 Campaign and draft guardrails are enforced server-side:
 
 - campaign name/subject/body length and normalization checks

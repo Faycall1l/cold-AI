@@ -13,9 +13,14 @@ from pydantic import BaseModel, EmailStr, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from ..config import settings
-from ..repositories import CampaignRepository, DraftRepository, UserRepository
+from ..repositories import CampaignRepository, DraftRepository, TemplateLibraryRepository, UserRepository
 from ..services.draft_service import generate_drafts
-from ..services.guardrails import GuardrailError, validate_campaign_inputs, validate_draft_content
+from ..services.guardrails import (
+    GuardrailError,
+    validate_campaign_inputs,
+    validate_draft_content,
+    validate_template_library_entry,
+)
 from ..services.send_service import send_due
 
 app = FastAPI(title="cold-AI Review UI", version="0.1.1")
@@ -90,6 +95,18 @@ class EmailSigninPayload(BaseModel):
 class ChangePasswordPayload(BaseModel):
     current_password: str = Field(min_length=8, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class TemplateLibraryPayload(BaseModel):
+    title: str
+    category: str
+    content: str
+
+
+def _owner_key_from_session_user(session_user: dict) -> str:
+    provider = str(session_user.get("provider") or "unknown")
+    sub = str(session_user.get("sub") or "anonymous")
+    return f"{provider}:{sub}"
 
 
 def require_user(request: Request) -> dict:
@@ -232,6 +249,63 @@ def default_templates(request: Request) -> dict:
     subject = (templates_dir / "subject_default.txt").read_text(encoding="utf-8")
     body = (templates_dir / "body_default.txt").read_text(encoding="utf-8")
     return {"subject_template": subject, "body_template": body}
+
+
+@app.get("/api/template-library")
+def list_template_library(request: Request) -> dict:
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    entries = TemplateLibraryRepository().list_by_owner(owner_key)
+    return {"entries": entries}
+
+
+@app.post("/api/template-library")
+def create_template_library_entry(payload: TemplateLibraryPayload, request: Request) -> dict:
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    try:
+        validated = validate_template_library_entry(payload.title, payload.category, payload.content)
+    except GuardrailError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    entry_id = TemplateLibraryRepository().create(
+        owner_key=owner_key,
+        title=validated["title"],
+        category=validated["category"],
+        content=validated["content"],
+    )
+    return {"ok": True, "entry_id": entry_id}
+
+
+@app.patch("/api/template-library/{entry_id}")
+def update_template_library_entry(entry_id: int, payload: TemplateLibraryPayload, request: Request) -> dict:
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    try:
+        validated = validate_template_library_entry(payload.title, payload.category, payload.content)
+    except GuardrailError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    updated = TemplateLibraryRepository().update_for_owner(
+        entry_id=entry_id,
+        owner_key=owner_key,
+        title=validated["title"],
+        category=validated["category"],
+        content=validated["content"],
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Template entry not found")
+    return {"ok": True, "entry_id": entry_id}
+
+
+@app.delete("/api/template-library/{entry_id}")
+def delete_template_library_entry(entry_id: int, request: Request) -> dict:
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    deleted = TemplateLibraryRepository().delete_for_owner(entry_id=entry_id, owner_key=owner_key)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Template entry not found")
+    return {"ok": True, "entry_id": entry_id}
 
 
 @app.post("/auth/email/signup")

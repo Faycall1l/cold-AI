@@ -21,8 +21,10 @@ async function api(path, options = {}) {
 }
 
 function App() {
+  const [activeTab, setActiveTab] = useState("campaigns");
   const [currentUser, setCurrentUser] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
+  const [templateEntries, setTemplateEntries] = useState([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
   const [campaignData, setCampaignData] = useState({ campaign: null, drafts: [] });
 
@@ -54,6 +56,12 @@ function App() {
     subject_template: "",
     body_template: "",
   });
+  const [templateForm, setTemplateForm] = useState({
+    title: "",
+    category: "script",
+    content: "",
+  });
+  const [editingTemplateId, setEditingTemplateId] = useState(null);
 
   const selectedCampaign = campaignData.campaign;
 
@@ -83,6 +91,7 @@ function App() {
       }
       setCurrentUser(me.user || null);
       await loadCampaigns();
+      await loadTemplateLibrary();
       await loadDefaultTemplates();
     } catch {
       window.location.href = "/";
@@ -119,6 +128,16 @@ function App() {
       }));
     } catch {
       // ignore and keep fallback
+    }
+  }
+
+  async function loadTemplateLibrary() {
+    try {
+      const data = await api("/api/template-library");
+      setTemplateEntries(data.entries || []);
+      setError("");
+    } catch (err) {
+      setError(String(err.message || err));
     }
   }
 
@@ -276,6 +295,16 @@ function App() {
     loadCampaigns();
   }
 
+  function switchTab(tabName) {
+    setActiveTab(tabName);
+    setMessage("");
+    setError("");
+    if (tabName !== "campaigns") {
+      setSelectedCampaignId(null);
+      setSelectedDraftId(null);
+    }
+  }
+
   async function logout() {
     await api("/auth/logout", { method: "POST", body: JSON.stringify({}) });
     window.location.href = "/";
@@ -312,69 +341,155 @@ function App() {
     }
   }
 
+  function resetTemplateForm() {
+    setTemplateForm({ title: "", category: "script", content: "" });
+    setEditingTemplateId(null);
+  }
+
+  async function saveTemplateEntry() {
+    if (!templateForm.title.trim() || !templateForm.content.trim()) {
+      setError("Template title and content are required.");
+      return;
+    }
+
+    try {
+      if (editingTemplateId) {
+        await api(`/api/template-library/${editingTemplateId}`, {
+          method: "PATCH",
+          body: JSON.stringify(templateForm),
+        });
+        setMessage("Template entry updated.");
+      } else {
+        await api("/api/template-library", {
+          method: "POST",
+          body: JSON.stringify(templateForm),
+        });
+        setMessage("Template entry created.");
+      }
+      setError("");
+      resetTemplateForm();
+      await loadTemplateLibrary();
+    } catch (err) {
+      setError(String(err.message || err));
+    }
+  }
+
+  function editTemplateEntry(entry) {
+    setTemplateForm({
+      title: entry.title || "",
+      category: entry.category || "script",
+      content: entry.content || "",
+    });
+    setEditingTemplateId(entry.id);
+  }
+
+  async function deleteTemplateEntry(entryId) {
+    try {
+      await api(`/api/template-library/${entryId}`, { method: "DELETE" });
+      setMessage("Template entry deleted.");
+      setError("");
+      if (editingTemplateId === entryId) {
+        resetTemplateForm();
+      }
+      await loadTemplateLibrary();
+    } catch (err) {
+      setError(String(err.message || err));
+    }
+  }
+
+  const headerTitle = activeTab === "templates"
+    ? "Templates"
+    : (selectedCampaign ? selectedCampaign.name : "Campaigns");
+  const headerSubtitle = activeTab === "templates"
+    ? "Store reusable scripts and product/service descriptions"
+    : (selectedCampaign && selectedCampaign.purpose
+      ? selectedCampaign.purpose
+      : "Run outreach workflows with a click-first control panel");
+
   return React.createElement("div", { className: "container" },
-    React.createElement("div", { className: "crumb" }, "cold-ai / dashboard"),
-    React.createElement("div", { className: "topbar" },
-      React.createElement("div", null,
-        React.createElement("h1", { className: "title" }, selectedCampaign ? selectedCampaign.name : "Campaigns"),
-        React.createElement(
-          "div",
-          { className: "subtitle" },
-          selectedCampaign && selectedCampaign.purpose
-            ? selectedCampaign.purpose
-            : "Run outreach workflows with a click-first control panel",
-        )
+    React.createElement("div", { className: "crumb" }, "cold-ai / workspace"),
+    React.createElement("div", { className: "app-shell" },
+      React.createElement("aside", { className: "sidebar card" },
+        React.createElement("div", { className: "sidebar-title" }, "Navigation"),
+        React.createElement("button", {
+          className: `nav-item ${activeTab === "campaigns" ? "active" : ""}`,
+          onClick: () => switchTab("campaigns"),
+        }, "Campaigns"),
+        React.createElement("button", {
+          className: `nav-item ${activeTab === "templates" ? "active" : ""}`,
+          onClick: () => switchTab("templates"),
+        }, "Templates")
       ),
-      React.createElement("div", { className: "row" },
-        currentUser && React.createElement("div", { className: "user-chip" }, currentUser.email || currentUser.name || "User"),
-        currentUser && currentUser.provider === "email" && React.createElement("button", { className: "btn btn-soft btn-top", onClick: () => setShowPasswordModal(true) }, "Change Password"),
-        !selectedCampaign && React.createElement("button", { className: "btn btn-dark btn-top", onClick: () => setShowCreateModal(true) }, "Create Campaign"),
-        selectedCampaign && React.createElement("button", { className: "btn btn-soft btn-top", onClick: goHome }, "Back"),
-        React.createElement("button", { className: "btn btn-soft btn-top", onClick: logout }, "Logout")
+
+      React.createElement("main", { className: "main-pane" },
+        React.createElement("div", { className: "topbar" },
+          React.createElement("div", null,
+            React.createElement("h1", { className: "title" }, headerTitle),
+            React.createElement("div", { className: "subtitle" }, headerSubtitle)
+          ),
+          React.createElement("div", { className: "row" },
+            currentUser && React.createElement("div", { className: "user-chip" }, currentUser.email || currentUser.name || "User"),
+            currentUser && currentUser.provider === "email" && React.createElement("button", { className: "btn btn-soft btn-top", onClick: () => setShowPasswordModal(true) }, "Change Password"),
+            activeTab === "campaigns" && !selectedCampaign && React.createElement("button", { className: "btn btn-dark btn-top", onClick: () => setShowCreateModal(true) }, "Create Campaign"),
+            activeTab === "campaigns" && selectedCampaign && React.createElement("button", { className: "btn btn-soft btn-top", onClick: goHome }, "Back"),
+            React.createElement("button", { className: "btn btn-soft btn-top", onClick: logout }, "Logout")
+          )
+        ),
+
+        message && React.createElement("div", { className: "message" }, message),
+        error && React.createElement("div", { className: "error" }, error),
+        busy && React.createElement("div", { className: "muted", style: { marginBottom: "10px" } }, "Loading…"),
+
+        activeTab === "campaigns" && !selectedCampaign && React.createElement(CampaignList, {
+          campaigns,
+          onOpen: openCampaign,
+          draftLimit,
+          setDraftLimit,
+          onGenerateDrafts: generateDraftsForCampaign,
+        }),
+
+        activeTab === "campaigns" && selectedCampaign && React.createElement(CampaignDetails, {
+          campaign: selectedCampaign,
+          drafts: campaignData.drafts,
+          selectedDraftId,
+          setSelectedDraftId,
+          statusCounts,
+          sendMode,
+          setSendMode,
+          onSendDue: sendDue,
+          onGenerateDrafts: generateDraftsForCampaign,
+          draftLimit,
+          setDraftLimit,
+          onApprove: approveDraft,
+          onReject: rejectDraft,
+          scheduleByDraft,
+          setScheduleByDraft,
+          editorSubject,
+          setEditorSubject,
+          editorBody,
+          setEditorBody,
+          onSaveEdits: saveDraftEdits,
+          personalizeOpener,
+          setPersonalizeOpener,
+          personalizeCTA,
+          setPersonalizeCTA,
+          personalizeResource,
+          setPersonalizeResource,
+          onApplyQuickPersonalization: applyQuickPersonalization,
+        }),
+
+        activeTab === "templates" && React.createElement(TemplatesPage, {
+          entries: templateEntries,
+          form: templateForm,
+          setForm: setTemplateForm,
+          editingId: editingTemplateId,
+          onSave: saveTemplateEntry,
+          onCancelEdit: resetTemplateForm,
+          onEdit: editTemplateEntry,
+          onDelete: deleteTemplateEntry,
+        })
       )
     ),
-
-    message && React.createElement("div", { className: "message" }, message),
-    error && React.createElement("div", { className: "error" }, error),
-    busy && React.createElement("div", { className: "muted", style: { marginBottom: "10px" } }, "Loading…"),
-
-    !selectedCampaign && React.createElement(CampaignList, {
-      campaigns,
-      onOpen: openCampaign,
-      draftLimit,
-      setDraftLimit,
-      onGenerateDrafts: generateDraftsForCampaign,
-    }),
-
-    selectedCampaign && React.createElement(CampaignDetails, {
-      campaign: selectedCampaign,
-      drafts: campaignData.drafts,
-      selectedDraftId,
-      setSelectedDraftId,
-      statusCounts,
-      sendMode,
-      setSendMode,
-      onSendDue: sendDue,
-      onGenerateDrafts: generateDraftsForCampaign,
-      draftLimit,
-      setDraftLimit,
-      onApprove: approveDraft,
-      onReject: rejectDraft,
-      scheduleByDraft,
-      setScheduleByDraft,
-      editorSubject,
-      setEditorSubject,
-      editorBody,
-      setEditorBody,
-      onSaveEdits: saveDraftEdits,
-      personalizeOpener,
-      setPersonalizeOpener,
-      personalizeCTA,
-      setPersonalizeCTA,
-      personalizeResource,
-      setPersonalizeResource,
-      onApplyQuickPersonalization: applyQuickPersonalization,
-    }),
 
     showCreateModal && React.createElement(CreateCampaignModal, {
       form: createForm,
@@ -389,6 +504,65 @@ function App() {
       onClose: () => setShowPasswordModal(false),
       onSubmit: changePassword,
     })
+  );
+}
+
+function TemplatesPage({ entries, form, setForm, editingId, onSave, onCancelEdit, onEdit, onDelete }) {
+  return React.createElement(React.Fragment, null,
+    React.createElement("div", { className: "card controls-card", style: { marginBottom: "12px" } },
+      React.createElement("div", { className: "field" },
+        React.createElement("label", { className: "muted" }, "Title"),
+        React.createElement("input", {
+          className: "input",
+          value: form.title,
+          onChange: (event) => setForm((prev) => ({ ...prev, title: event.target.value })),
+          placeholder: "Dentist follow-up script",
+        })
+      ),
+      React.createElement("div", { className: "field" },
+        React.createElement("label", { className: "muted" }, "Category"),
+        React.createElement("select", {
+          className: "select",
+          style: { maxWidth: "240px" },
+          value: form.category,
+          onChange: (event) => setForm((prev) => ({ ...prev, category: event.target.value })),
+        },
+          React.createElement("option", { value: "script" }, "Script"),
+          React.createElement("option", { value: "product" }, "Product Description"),
+          React.createElement("option", { value: "service" }, "Service Description")
+        )
+      ),
+      React.createElement("div", { className: "field" },
+        React.createElement("label", { className: "muted" }, "Content"),
+        React.createElement("textarea", {
+          className: "input",
+          rows: 7,
+          value: form.content,
+          onChange: (event) => setForm((prev) => ({ ...prev, content: event.target.value })),
+          placeholder: "Write the reusable script or description here...",
+        })
+      ),
+      React.createElement("div", { className: "row" },
+        React.createElement("button", { className: "btn btn-dark", onClick: onSave }, editingId ? "Update Entry" : "Add Entry"),
+        editingId && React.createElement("button", { className: "btn btn-soft", onClick: onCancelEdit }, "Cancel Edit")
+      )
+    ),
+
+    !entries.length
+      ? React.createElement("div", { className: "card empty" }, "No template entries yet. Add scripts or product/service descriptions above.")
+      : React.createElement("div", { className: "template-grid" },
+          entries.map((entry) => React.createElement("div", { key: entry.id, className: "card template-card" },
+            React.createElement("div", { className: "template-top" },
+              React.createElement("div", { className: "template-title" }, entry.title),
+              React.createElement("span", { className: "status" }, entry.category)
+            ),
+            React.createElement("div", { className: "body-preview" }, entry.content),
+            React.createElement("div", { className: "row", style: { marginTop: "10px" } },
+              React.createElement("button", { className: "btn btn-soft", onClick: () => onEdit(entry) }, "Edit"),
+              React.createElement("button", { className: "btn btn-bad", onClick: () => onDelete(entry.id) }, "Delete")
+            )
+          ))
+        )
   );
 }
 

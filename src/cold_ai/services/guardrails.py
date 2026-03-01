@@ -95,3 +95,23 @@ def validate_draft_content(subject: str, body: str) -> dict[str, str]:
     validated_subject = _validate_text("Subject", subject, min_len=3, max_len=240)
     validated_body = _validate_text("Body", body, min_len=20, max_len=8000, multiline=True)
     return {"subject": validated_subject, "body": validated_body}
+
+
+def validate_template_library_entry(title: str, category: str, content: str) -> dict[str, str]:
+    validated_title = _validate_text("Template title", title, min_len=3, max_len=120)
+    validated_category = _normalize_single_line(category).lower()
+    allowed_categories = {"script", "product", "service"}
+    if validated_category not in allowed_categories:
+        raise GuardrailError("Category must be one of: script, product, service")
+    validated_content = _validate_text(
+        "Template content",
+        content,
+        min_len=10,
+        max_len=8000,
+        multiline=True,
+    )
+    return {
+        "title": validated_title,
+        "category": validated_category,
+        "content": validated_content,
+    }
