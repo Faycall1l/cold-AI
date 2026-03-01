@@ -91,6 +91,38 @@ def init_db() -> None:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS agent_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_key TEXT NOT NULL UNIQUE,
+                llm_provider TEXT NOT NULL DEFAULT 'openai',
+                llm_base_url TEXT,
+                llm_api_key TEXT,
+                llm_models_json TEXT,
+                enable_web_research INTEGER NOT NULL DEFAULT 0,
+                enable_llm_rewrite INTEGER NOT NULL DEFAULT 0,
+                prompt_search TEXT,
+                prompt_routing TEXT,
+                prompt_supervisor TEXT,
+                prompt_rewrite TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS outreach_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_key TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                purpose TEXT,
+                specialty TEXT,
+                pattern_text TEXT NOT NULL,
+                quality_score REAL NOT NULL DEFAULT 0.5,
+                source_event TEXT NOT NULL,
+                usage_count INTEGER NOT NULL DEFAULT 0,
+                last_used_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
             """
         )
 
@@ -109,6 +141,24 @@ def init_db() -> None:
         }
         if "phone" not in lead_columns:
             conn.execute("ALTER TABLE leads ADD COLUMN phone TEXT")
+
+        agent_settings_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(agent_settings)").fetchall()
+        }
+        if "llm_provider" not in agent_settings_columns:
+            conn.execute(
+                "ALTER TABLE agent_settings ADD COLUMN llm_provider TEXT NOT NULL DEFAULT 'openai'"
+            )
+
+        outreach_memory_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(outreach_memory)").fetchall()
+        }
+        if outreach_memory_columns and "usage_count" not in outreach_memory_columns:
+            conn.execute("ALTER TABLE outreach_memory ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0")
+        if outreach_memory_columns and "last_used_at" not in outreach_memory_columns:
+            conn.execute("ALTER TABLE outreach_memory ADD COLUMN last_used_at TEXT")
 
         existing = conn.execute(
             "SELECT id FROM users WHERE lower(email) = lower(?)",

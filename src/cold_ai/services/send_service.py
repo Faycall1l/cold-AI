@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ..repositories import DraftRepository, EventRepository
+from ..repositories import DraftRepository, EventRepository, OutreachMemoryRepository
 from .email_provider import ConsoleEmailProvider, SMTPEmailProvider
+from .outreach_memory import build_memory_seed
 from .whatsapp_provider import ConsoleWhatsAppProvider, UnconfiguredWhatsAppProvider
 
 
@@ -12,6 +13,7 @@ def send_due(dry_run: bool = False, campaign_id: int | None = None) -> tuple[int
     drafts = DraftRepository().list_due(now_iso, campaign_id=campaign_id)
     repository = DraftRepository()
     event_repository = EventRepository()
+    memory_repository = OutreachMemoryRepository()
     email_provider = ConsoleEmailProvider() if dry_run else SMTPEmailProvider()
     whatsapp_provider = ConsoleWhatsAppProvider() if dry_run else UnconfiguredWhatsAppProvider()
 
@@ -35,6 +37,29 @@ def send_due(dry_run: bool = False, campaign_id: int | None = None) -> tuple[int
                 event_repository.log("email_sent", {"to": to_email}, draft_id=draft["id"])
 
             repository.mark_sent(draft["id"])
+
+            memory_candidate = build_memory_seed(
+                context={
+                    "owner_key": "global",
+                    "channel": draft.get("channel") or "email",
+                    "purpose": draft.get("purpose") or "",
+                    "specialty": draft.get("specialty") or "",
+                },
+                subject=str(draft.get("subject") or ""),
+                body=str(draft.get("body") or ""),
+                score=0.82,
+                source_event="sent_success",
+            )
+            memory_repository.add_memory(
+                owner_key=memory_candidate.owner_key,
+                channel=memory_candidate.channel,
+                purpose=memory_candidate.purpose,
+                specialty=memory_candidate.specialty,
+                pattern_text=memory_candidate.pattern_text,
+                quality_score=memory_candidate.quality_score,
+                source_event=memory_candidate.source_event,
+            )
+
             sent += 1
         except Exception as exc:
             repository.mark_failed(draft["id"], str(exc))

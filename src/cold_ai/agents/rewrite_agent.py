@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from ..config import settings
+from ..services.ai_agent_runtime import resolve_agent_llm_config
 from ..services.llm_router import LLMRouter
+from ..services.outreach_knowledge_base import build_outreach_knowledge_context
 
 SPAMMY_TERMS = {
     "guaranteed",
@@ -15,12 +16,19 @@ SPAMMY_TERMS = {
 
 
 class RewriteAgent:
-    def __init__(self) -> None:
+    def __init__(self, agent_settings: dict | None = None) -> None:
         self.router = LLMRouter()
+        self.runtime = resolve_agent_llm_config(agent_settings)
 
     def maybe_rewrite(self, subject: str, body: str, context: dict) -> tuple[str, str, str]:
-        if not settings.enable_llm_rewrite:
+        if not self.runtime.enable_llm_rewrite:
             return subject, body, "disabled"
+
+        knowledge = build_outreach_knowledge_context(
+            channel=str(context.get("channel") or "email"),
+            purpose=str(context.get("purpose") or ""),
+            specialty=str(context.get("specialty") or ""),
+        )
 
         payload = {
             "goal": "polish outreach while keeping specific details",
@@ -31,10 +39,20 @@ class RewriteAgent:
                 "city": context.get("city"),
                 "research_snippet": context.get("research_snippet"),
             },
+            "knowledge": {
+                "principles": knowledge.get("principles") or [],
+                "followup_plan": knowledge.get("followup_plan") or [],
+                "objection_handling": knowledge.get("objection_handling") or [],
+                "cta_examples": knowledge.get("cta_examples") or [],
+            },
             "draft": {"subject": subject, "body": body},
         }
 
-        rewritten = self.router.rewrite_email(payload)
+        rewritten = self.router.rewrite_email(
+            payload,
+            runtime_config=self.runtime,
+            custom_prompt=self.runtime.prompt_rewrite,
+        )
         if not rewritten:
             return subject, body, "fallback_no_response"
 

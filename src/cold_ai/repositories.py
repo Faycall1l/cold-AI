@@ -157,6 +157,7 @@ class DraftRepository:
             rows = conn.execute(
                 f"""
                 SELECT d.*, l.email, l.phone, c.channel
+                      , l.specialty, c.purpose
                 FROM drafts d
                 JOIN leads l ON l.id = d.lead_id
                 JOIN campaigns c ON c.id = d.campaign_id
@@ -290,3 +291,234 @@ class TemplateLibraryRepository:
                 (entry_id, owner_key),
             )
             return result.rowcount > 0
+
+
+class AgentSettingsRepository:
+    def get_by_owner(self, owner_key: str) -> dict | None:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_settings WHERE owner_key = ?",
+                (owner_key,),
+            ).fetchone()
+        if not row:
+            return None
+        payload = dict(row)
+        raw_models = payload.get("llm_models_json") or "[]"
+        try:
+            payload["llm_models"] = json.loads(raw_models)
+        except Exception:
+            payload["llm_models"] = []
+        return payload
+
+    def upsert_for_owner(
+        self,
+        owner_key: str,
+        llm_provider: str,
+        llm_base_url: str,
+        llm_api_key: str | None,
+        llm_models: list[str],
+        enable_web_research: bool,
+        enable_llm_rewrite: bool,
+        prompt_search: str,
+        prompt_routing: str,
+        prompt_supervisor: str,
+        prompt_rewrite: str,
+    ) -> None:
+        existing = self.get_by_owner(owner_key)
+        effective_key = llm_api_key if llm_api_key is not None else (existing or {}).get("llm_api_key")
+
+        with get_connection() as conn:
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE agent_settings
+                    SET llm_provider = ?,
+                        llm_base_url = ?,
+                        llm_api_key = ?,
+                        llm_models_json = ?,
+                        enable_web_research = ?,
+                        enable_llm_rewrite = ?,
+                        prompt_search = ?,
+                        prompt_routing = ?,
+                        prompt_supervisor = ?,
+                        prompt_rewrite = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE owner_key = ?
+                    """,
+                    (
+                        llm_provider,
+                        llm_base_url,
+                        effective_key,
+                        json.dumps(llm_models, ensure_ascii=False),
+                        1 if enable_web_research else 0,
+                        1 if enable_llm_rewrite else 0,
+                        prompt_search,
+                        prompt_routing,
+                        prompt_supervisor,
+                        prompt_rewrite,
+                        owner_key,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO agent_settings (
+                        owner_key,
+                        llm_provider,
+                        llm_base_url,
+                        llm_api_key,
+                        llm_models_json,
+                        enable_web_research,
+                        enable_llm_rewrite,
+                        prompt_search,
+                        prompt_routing,
+                        prompt_supervisor,
+                        prompt_rewrite
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        owner_key,
+                        llm_provider,
+                        llm_base_url,
+                        effective_key,
+                        json.dumps(llm_models, ensure_ascii=False),
+                        1 if enable_web_research else 0,
+                        1 if enable_llm_rewrite else 0,
+                        prompt_search,
+                        prompt_routing,
+                        prompt_supervisor,
+                        prompt_rewrite,
+                    ),
+                )
+
+
+class OutreachMemoryRepository:
+    def list_by_owner(
+        self,
+        owner_key: str,
+        limit: int = 20,
+        channel: str | None = None,
+    ) -> list[dict]:
+        with get_connection() as conn:
+            if channel and channel.strip():
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM outreach_memory
+                    WHERE owner_key = ? AND channel = ?
+                    ORDER BY quality_score DESC, usage_count DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (owner_key, channel.strip().lower(), max(1, min(limit, 100))),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM outreach_memory
+                    WHERE owner_key = ?
+                    ORDER BY quality_score DESC, usage_count DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (owner_key, max(1, min(limit, 100))),
+                ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_for_context(
+        self,
+        owner_key: str,
+        channel: str,
+        purpose: str | None,
+        specialty: str | None,
+        limit: int = 5,
+    ) -> list[dict]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM outreach_memory
+                WHERE owner_key = ?
+                  AND channel = ?
+                  AND (? IS NULL OR purpose = ? OR purpose = '')
+                  AND (? IS NULL OR specialty = ? OR specialty = '')
+                ORDER BY quality_score DESC, usage_count DESC, id DESC
+                LIMIT ?
+                """,
+                (
+                    owner_key,
+                    channel,
+                    purpose,
+                    purpose,
+                    specialty,
+                    specialty,
+                    limit,
+                ),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def add_memory(
+        self,
+        owner_key: str,
+        channel: str,
+        purpose: str,
+        specialty: str,
+        pattern_text: str,
+        quality_score: float,
+        source_event: str,
+    ) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO outreach_memory (
+                    owner_key,
+                    channel,
+                    purpose,
+                    specialty,
+                    pattern_text,
+                    quality_score,
+                    source_event,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (
+                    owner_key,
+                    channel,
+                    purpose,
+                    specialty,
+                    pattern_text[:600],
+                    max(0.0, min(1.0, quality_score)),
+                    source_event,
+                ),
+            )
+
+    def mark_used(self, memory_ids: list[int]) -> None:
+        if not memory_ids:
+            return
+        with get_connection() as conn:
+            for memory_id in memory_ids:
+                conn.execute(
+                    """
+                    UPDATE outreach_memory
+                    SET usage_count = usage_count + 1,
+                        last_used_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (memory_id,),
+                )
+
+    def clear_by_owner(self, owner_key: str, channel: str | None = None) -> int:
+        with get_connection() as conn:
+            if channel and channel.strip():
+                result = conn.execute(
+                    "DELETE FROM outreach_memory WHERE owner_key = ? AND channel = ?",
+                    (owner_key, channel.strip().lower()),
+                )
+            else:
+                result = conn.execute(
+                    "DELETE FROM outreach_memory WHERE owner_key = ?",
+                    (owner_key,),
+                )
+            return int(result.rowcount or 0)

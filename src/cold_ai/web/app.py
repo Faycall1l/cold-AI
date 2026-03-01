@@ -13,15 +13,25 @@ from pydantic import BaseModel, EmailStr, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from ..config import settings
-from ..repositories import CampaignRepository, DraftRepository, TemplateLibraryRepository, UserRepository
+from ..repositories import (
+    AgentSettingsRepository,
+    CampaignRepository,
+    DraftRepository,
+    OutreachMemoryRepository,
+    TemplateLibraryRepository,
+    UserRepository,
+)
 from ..services.draft_service import generate_drafts
+from ..services.ai_agent_runtime import list_provider_options, resolve_agent_llm_config
 from ..services.guardrails import (
     GuardrailError,
     validate_campaign_channel,
     validate_campaign_inputs,
     validate_draft_content,
+    validate_agent_settings_payload,
     validate_template_library_entry,
 )
+from ..services.llm_router import LLMRouter
 from ..services.send_service import send_due
 
 app = FastAPI(title="cold-AI Review UI", version="0.1.1")
@@ -105,10 +115,54 @@ class TemplateLibraryPayload(BaseModel):
     content: str
 
 
+class AgentSettingsPayload(BaseModel):
+    llm_provider: str = "openai"
+    llm_base_url: str
+    llm_api_key: str = ""
+    llm_models: list[str] = []
+    enable_web_research: bool = False
+    enable_llm_rewrite: bool = False
+    prompt_search: str
+    prompt_routing: str
+    prompt_supervisor: str
+    prompt_rewrite: str
+
+
+class AgentSettingsTestPayload(BaseModel):
+    llm_provider: str = "openai"
+    llm_base_url: str | None = None
+    llm_api_key: str = ""
+    llm_model: str | None = None
+
+
+class OutreachMemoryClearPayload(BaseModel):
+    channel: str | None = None
+
+
 def _owner_key_from_session_user(session_user: dict) -> str:
     provider = str(session_user.get("provider") or "unknown")
     sub = str(session_user.get("sub") or "anonymous")
     return f"{provider}:{sub}"
+
+
+DEFAULT_PROMPTS = {
+    "prompt_search": (
+        "You are the Search Agent for medical outreach. Produce one high-signal search query and extract only useful,"
+        " factual context about specialty/city fit. Ignore irrelevant noise and return concise evidence."
+    ),
+    "prompt_routing": (
+        "You are the Routing Agent. Decide communication strategy and messaging angle for this lead."
+        " Prioritize credibility, local context, and channel fit without hype."
+    ),
+    "prompt_supervisor": (
+        "You are the Supervisor Agent. Audit quality and safety of the draft before send."
+        " Reject spammy claims, weak personalization, or unclear CTA."
+    ),
+    "prompt_rewrite": (
+        "You are the Rewrite Agent. Rewrite for clarity, warm professional tone, and concrete personalization."
+        " Keep it concise and realistic."
+    ),
+}
 
 
 def require_user(request: Request) -> dict:
@@ -240,14 +294,120 @@ def send_due_campaign(campaign_id: int, payload: SendDuePayload, request: Reques
 
 @app.post("/api/campaigns/{campaign_id}/generate-drafts")
 def generate_campaign_drafts(campaign_id: int, payload: GenerateDraftsPayload, request: Request) -> dict:
-    require_user(request)
-    created, ignored = generate_drafts(campaign_id=campaign_id, limit=max(1, payload.limit))
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    created, ignored = generate_drafts(
+        campaign_id=campaign_id,
+        limit=max(1, payload.limit),
+        owner_key=owner_key,
+    )
     return {
         "ok": True,
         "campaign_id": campaign_id,
         "created": created,
         "ignored": ignored,
     }
+
+
+@app.get("/api/agent-settings")
+def get_agent_settings(request: Request) -> dict:
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    settings_row = AgentSettingsRepository().get_by_owner(owner_key) or {}
+    llm_models = settings_row.get("llm_models") or list(settings.llm_models)
+    llm_provider = settings_row.get("llm_provider") or "openai"
+    return {
+        "llm_provider": llm_provider,
+        "llm_base_url": settings_row.get("llm_base_url") or settings.llm_base_url,
+        "llm_api_key": "",
+        "has_llm_api_key": bool(settings_row.get("llm_api_key") or settings.llm_api_key),
+        "llm_models": llm_models,
+        "enable_web_research": bool(
+            settings_row.get("enable_web_research")
+            if settings_row
+            else settings.enable_web_research
+        ),
+        "enable_llm_rewrite": bool(
+            settings_row.get("enable_llm_rewrite")
+            if settings_row
+            else settings.enable_llm_rewrite
+        ),
+        "prompt_search": settings_row.get("prompt_search") or DEFAULT_PROMPTS["prompt_search"],
+        "prompt_routing": settings_row.get("prompt_routing") or DEFAULT_PROMPTS["prompt_routing"],
+        "prompt_supervisor": settings_row.get("prompt_supervisor") or DEFAULT_PROMPTS["prompt_supervisor"],
+        "prompt_rewrite": settings_row.get("prompt_rewrite") or DEFAULT_PROMPTS["prompt_rewrite"],
+        "provider_options": list_provider_options(),
+    }
+
+
+@app.put("/api/agent-settings")
+def update_agent_settings(payload: AgentSettingsPayload, request: Request) -> dict:
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    try:
+        validated = validate_agent_settings_payload(payload.model_dump())
+    except GuardrailError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    AgentSettingsRepository().upsert_for_owner(
+        owner_key=owner_key,
+        llm_provider=validated["llm_provider"],
+        llm_base_url=validated["llm_base_url"],
+        llm_api_key=validated["llm_api_key"] or None,
+        llm_models=validated["llm_models"],
+        enable_web_research=validated["enable_web_research"],
+        enable_llm_rewrite=validated["enable_llm_rewrite"],
+        prompt_search=validated["prompt_search"],
+        prompt_routing=validated["prompt_routing"],
+        prompt_supervisor=validated["prompt_supervisor"],
+        prompt_rewrite=validated["prompt_rewrite"],
+    )
+    return {"ok": True}
+
+
+@app.post("/api/agent-settings/test")
+def test_agent_settings(payload: AgentSettingsTestPayload, request: Request) -> dict:
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    existing = AgentSettingsRepository().get_by_owner(owner_key) or {}
+
+    merged = {
+        **existing,
+        "llm_provider": payload.llm_provider or existing.get("llm_provider") or "openai",
+    }
+    if payload.llm_base_url and payload.llm_base_url.strip():
+        merged["llm_base_url"] = payload.llm_base_url.strip()
+    if payload.llm_api_key and payload.llm_api_key.strip():
+        merged["llm_api_key"] = payload.llm_api_key.strip()
+    if payload.llm_model and payload.llm_model.strip():
+        merged["llm_models"] = [payload.llm_model.strip()]
+
+    runtime_config = resolve_agent_llm_config(merged)
+    result = LLMRouter().test_connection(runtime_config)
+    return result
+
+
+@app.get("/api/outreach-memory")
+def list_outreach_memory(request: Request, limit: int = 20, channel: str | None = None) -> dict:
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    items = OutreachMemoryRepository().list_by_owner(
+        owner_key=owner_key,
+        limit=max(1, min(limit, 100)),
+        channel=channel,
+    )
+    return {"items": items, "count": len(items)}
+
+
+@app.delete("/api/outreach-memory")
+def clear_outreach_memory(payload: OutreachMemoryClearPayload, request: Request) -> dict:
+    session_user = require_user(request)
+    owner_key = _owner_key_from_session_user(session_user)
+    deleted = OutreachMemoryRepository().clear_by_owner(
+        owner_key=owner_key,
+        channel=payload.channel,
+    )
+    return {"ok": True, "deleted": deleted}
 
 
 @app.get("/api/templates/defaults")

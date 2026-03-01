@@ -5,6 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _csv_env(name: str, default: str = "") -> tuple[str, ...]:
+    raw = os.getenv(name, default)
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
 @dataclass(frozen=True)
 class Settings:
     db_path: Path = Path("data/cold_ai.db")
@@ -34,6 +39,24 @@ class Settings:
 
     oauth_google_client_id: str | None = os.getenv("COLD_AI_OAUTH_GOOGLE_CLIENT_ID")
     oauth_google_client_secret: str | None = os.getenv("COLD_AI_OAUTH_GOOGLE_CLIENT_SECRET")
+
+    telegram_bot_token: str | None = os.getenv("COLD_AI_TELEGRAM_BOT_TOKEN")
+    telegram_default_chat_id: str | None = os.getenv("COLD_AI_TELEGRAM_DEFAULT_CHAT_ID")
+
+    tool_profile: str = os.getenv("COLD_AI_TOOL_PROFILE", "messaging").strip().lower()
+    tools_allow: tuple[str, ...] = _csv_env("COLD_AI_TOOLS_ALLOW")
+    tools_deny: tuple[str, ...] = _csv_env("COLD_AI_TOOLS_DENY")
+
+    tool_loop_detection_enabled: bool = os.getenv(
+        "COLD_AI_TOOL_LOOP_DETECTION_ENABLED", "true"
+    ).lower() == "true"
+    tool_loop_history_size: int = int(os.getenv("COLD_AI_TOOL_LOOP_HISTORY_SIZE", "30"))
+    tool_loop_warning_threshold: int = int(
+        os.getenv("COLD_AI_TOOL_LOOP_WARNING_THRESHOLD", "6")
+    )
+    tool_loop_critical_threshold: int = int(
+        os.getenv("COLD_AI_TOOL_LOOP_CRITICAL_THRESHOLD", "10")
+    )
 
 
 settings = Settings()

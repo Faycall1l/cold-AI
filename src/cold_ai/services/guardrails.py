@@ -3,6 +3,30 @@ from __future__ import annotations
 import re
 
 
+SUPPORTED_LLM_PROVIDERS = {
+    "openai",
+    "openrouter",
+    "groq",
+    "together",
+    "ollama",
+    "vllm",
+    "anthropic",
+    "gemini",
+}
+
+
+PROVIDER_DEFAULT_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "groq": "https://api.groq.com/openai/v1",
+    "together": "https://api.together.xyz/v1",
+    "ollama": "http://127.0.0.1:11434/v1",
+    "vllm": "http://127.0.0.1:8000/v1",
+    "anthropic": "https://api.anthropic.com",
+    "gemini": "https://generativelanguage.googleapis.com",
+}
+
+
 BLOCKED_TERMS = (
     "nigger",
     "nigga",
@@ -122,3 +146,75 @@ def validate_campaign_channel(channel: str) -> str:
     if cleaned not in {"email", "whatsapp"}:
         raise GuardrailError("Campaign channel must be one of: email, whatsapp")
     return cleaned
+
+
+def validate_agent_settings_payload(payload: dict) -> dict:
+    llm_provider = _normalize_single_line(str(payload.get("llm_provider") or "openai")).lower()
+    if llm_provider not in SUPPORTED_LLM_PROVIDERS:
+        raise GuardrailError(
+            "LLM provider must be one of: " + ", ".join(sorted(SUPPORTED_LLM_PROVIDERS))
+        )
+
+    default_base_url = PROVIDER_DEFAULT_BASE_URLS.get(llm_provider, "")
+    llm_base_url = _validate_text(
+        "LLM base URL",
+        str(payload.get("llm_base_url") or default_base_url),
+        min_len=8,
+        max_len=300,
+    )
+    llm_api_key = str(payload.get("llm_api_key") or "").strip()
+    if llm_api_key and len(llm_api_key) > 400:
+        raise GuardrailError("LLM API key is too long")
+
+    raw_models = payload.get("llm_models") or []
+    if isinstance(raw_models, str):
+        models = [m.strip() for m in raw_models.split(",") if m.strip()]
+    elif isinstance(raw_models, list):
+        models = [str(m).strip() for m in raw_models if str(m).strip()]
+    else:
+        raise GuardrailError("LLM models must be a list or comma-separated string")
+
+    if len(models) > 8:
+        raise GuardrailError("At most 8 models are allowed")
+
+    prompt_search = _validate_text(
+        "Search agent prompt",
+        str(payload.get("prompt_search") or ""),
+        min_len=20,
+        max_len=4000,
+        multiline=True,
+    )
+    prompt_routing = _validate_text(
+        "Routing agent prompt",
+        str(payload.get("prompt_routing") or ""),
+        min_len=20,
+        max_len=4000,
+        multiline=True,
+    )
+    prompt_supervisor = _validate_text(
+        "Supervisor agent prompt",
+        str(payload.get("prompt_supervisor") or ""),
+        min_len=20,
+        max_len=4000,
+        multiline=True,
+    )
+    prompt_rewrite = _validate_text(
+        "Rewrite agent prompt",
+        str(payload.get("prompt_rewrite") or ""),
+        min_len=20,
+        max_len=4000,
+        multiline=True,
+    )
+
+    return {
+        "llm_provider": llm_provider,
+        "llm_base_url": llm_base_url,
+        "llm_api_key": llm_api_key,
+        "llm_models": models,
+        "enable_web_research": bool(payload.get("enable_web_research", False)),
+        "enable_llm_rewrite": bool(payload.get("enable_llm_rewrite", False)),
+        "prompt_search": prompt_search,
+        "prompt_routing": prompt_routing,
+        "prompt_supervisor": prompt_supervisor,
+        "prompt_rewrite": prompt_rewrite,
+    }

@@ -62,6 +62,21 @@ function App() {
     category: "script",
     content: "",
   });
+  const [agentSettings, setAgentSettings] = useState({
+    llm_provider: "openai",
+    provider_options: [],
+    llm_base_url: "",
+    llm_api_key: "",
+    has_llm_api_key: false,
+    llm_models_text: "",
+    enable_web_research: false,
+    enable_llm_rewrite: false,
+    prompt_search: "",
+    prompt_routing: "",
+    prompt_supervisor: "",
+    prompt_rewrite: "",
+  });
+  const [outreachMemoryItems, setOutreachMemoryItems] = useState([]);
   const [editingTemplateId, setEditingTemplateId] = useState(null);
 
   const selectedCampaign = campaignData.campaign;
@@ -94,6 +109,8 @@ function App() {
       await loadCampaigns();
       await loadTemplateLibrary();
       await loadDefaultTemplates();
+      await loadAgentSettings();
+      await loadOutreachMemory();
     } catch {
       window.location.href = "/";
     }
@@ -137,6 +154,113 @@ function App() {
       const data = await api("/api/template-library");
       setTemplateEntries(data.entries || []);
       setError("");
+    } catch (err) {
+      setError(String(err.message || err));
+    }
+  }
+
+  async function loadAgentSettings() {
+    try {
+      const data = await api("/api/agent-settings");
+      setAgentSettings({
+        llm_provider: data.llm_provider || "openai",
+        provider_options: Array.isArray(data.provider_options) ? data.provider_options : [],
+        llm_base_url: data.llm_base_url || "",
+        llm_api_key: "",
+        has_llm_api_key: !!data.has_llm_api_key,
+        llm_models_text: Array.isArray(data.llm_models) ? data.llm_models.join(", ") : "",
+        enable_web_research: !!data.enable_web_research,
+        enable_llm_rewrite: !!data.enable_llm_rewrite,
+        prompt_search: data.prompt_search || "",
+        prompt_routing: data.prompt_routing || "",
+        prompt_supervisor: data.prompt_supervisor || "",
+        prompt_rewrite: data.prompt_rewrite || "",
+      });
+      setError("");
+    } catch (err) {
+      setError(String(err.message || err));
+    }
+  }
+
+  async function saveAgentSettings() {
+    try {
+      const models = (agentSettings.llm_models_text || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      await api("/api/agent-settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          llm_provider: agentSettings.llm_provider,
+          llm_base_url: agentSettings.llm_base_url,
+          llm_api_key: agentSettings.llm_api_key,
+          llm_models: models,
+          enable_web_research: !!agentSettings.enable_web_research,
+          enable_llm_rewrite: !!agentSettings.enable_llm_rewrite,
+          prompt_search: agentSettings.prompt_search,
+          prompt_routing: agentSettings.prompt_routing,
+          prompt_supervisor: agentSettings.prompt_supervisor,
+          prompt_rewrite: agentSettings.prompt_rewrite,
+        }),
+      });
+      setMessage("AI agent settings saved.");
+      setError("");
+      await loadAgentSettings();
+    } catch (err) {
+      setError(String(err.message || err));
+    }
+  }
+
+  async function loadOutreachMemory() {
+    try {
+      const data = await api("/api/outreach-memory?limit=20");
+      setOutreachMemoryItems(Array.isArray(data.items) ? data.items : []);
+      setError("");
+    } catch (err) {
+      setError(String(err.message || err));
+    }
+  }
+
+  async function clearOutreachMemory() {
+    try {
+      const result = await api("/api/outreach-memory", {
+        method: "DELETE",
+        body: JSON.stringify({}),
+      });
+      setMessage(`Outreach memory cleared (${result.deleted || 0} removed).`);
+      setError("");
+      await loadOutreachMemory();
+    } catch (err) {
+      setError(String(err.message || err));
+    }
+  }
+
+  async function testAgentSettingsConnection() {
+    try {
+      const models = (agentSettings.llm_models_text || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const model = models.length ? models[0] : "";
+
+      const result = await api("/api/agent-settings/test", {
+        method: "POST",
+        body: JSON.stringify({
+          llm_provider: agentSettings.llm_provider,
+          llm_base_url: agentSettings.llm_base_url,
+          llm_api_key: agentSettings.llm_api_key,
+          llm_model: model,
+        }),
+      });
+
+      if (result.ok) {
+        setMessage(
+          `Connection OK: ${result.provider} / ${result.model || "default"}`,
+        );
+        setError("");
+      } else {
+        setError(result.error || "Connection failed");
+      }
     } catch (err) {
       setError(String(err.message || err));
     }
@@ -545,6 +669,13 @@ function App() {
         activeTab === "settings" && React.createElement(SettingsPage, {
           currentUser,
           onOpenPasswordModal: () => setShowPasswordModal(true),
+          settings: agentSettings,
+          setSettings: setAgentSettings,
+          onSaveSettings: saveAgentSettings,
+          onTestConnection: testAgentSettingsConnection,
+          memoryItems: outreachMemoryItems,
+          onRefreshMemory: loadOutreachMemory,
+          onClearMemory: clearOutreachMemory,
         })
       )
     ),
@@ -565,7 +696,17 @@ function App() {
   );
 }
 
-function SettingsPage({ currentUser, onOpenPasswordModal }) {
+function SettingsPage({
+  currentUser,
+  onOpenPasswordModal,
+  settings,
+  setSettings,
+  onSaveSettings,
+  onTestConnection,
+  memoryItems,
+  onRefreshMemory,
+  onClearMemory,
+}) {
   return React.createElement("div", { className: "card controls-card" },
     React.createElement("div", { className: "field" },
       React.createElement("div", { className: "muted" }, "Signed in as"),
@@ -577,6 +718,144 @@ function SettingsPage({ currentUser, onOpenPasswordModal }) {
     ),
     currentUser?.provider === "email" && React.createElement("div", { className: "row", style: { marginTop: "8px" } },
       React.createElement("button", { className: "btn btn-soft", onClick: onOpenPasswordModal }, "Change Password")
+    ),
+    React.createElement("hr", { style: { border: 0, borderTop: "1px solid #eee", margin: "12px 0" } }),
+
+    React.createElement("div", { className: "field" },
+      React.createElement("label", { className: "muted" }, "LLM Provider"),
+      React.createElement("select", {
+        className: "select",
+        style: { maxWidth: "280px" },
+        value: settings.llm_provider,
+        onChange: (event) => setSettings((prev) => ({ ...prev, llm_provider: event.target.value })),
+      },
+        (settings.provider_options || []).map((option) => React.createElement(
+          "option",
+          { key: option.id, value: option.id },
+          option.label || option.id,
+        ))
+      )
+    ),
+
+    React.createElement("div", { className: "field" },
+      React.createElement("label", { className: "muted" }, "LLM Base URL"),
+      React.createElement("input", {
+        className: "input",
+        value: settings.llm_base_url,
+        onChange: (event) => setSettings((prev) => ({ ...prev, llm_base_url: event.target.value })),
+        placeholder: "https://api.openai.com/v1",
+      })
+    ),
+
+    React.createElement("div", { className: "field" },
+      React.createElement("label", { className: "muted" }, "API Key"),
+      React.createElement("input", {
+        className: "input",
+        type: "password",
+        value: settings.llm_api_key,
+        onChange: (event) => setSettings((prev) => ({ ...prev, llm_api_key: event.target.value })),
+        placeholder: settings.has_llm_api_key ? "Stored (leave blank to keep current key)" : "sk-...",
+      })
+    ),
+
+    React.createElement("div", { className: "field" },
+      React.createElement("label", { className: "muted" }, "Models (comma-separated priority list)"),
+      React.createElement("input", {
+        className: "input",
+        value: settings.llm_models_text,
+        onChange: (event) => setSettings((prev) => ({ ...prev, llm_models_text: event.target.value })),
+        placeholder: "gpt-4o-mini, gpt-4.1-mini",
+      })
+    ),
+
+    React.createElement("div", { className: "row", style: { marginBottom: "8px" } },
+      React.createElement("label", { className: "muted" },
+        React.createElement("input", {
+          type: "checkbox",
+          checked: !!settings.enable_web_research,
+          onChange: (event) => setSettings((prev) => ({ ...prev, enable_web_research: event.target.checked })),
+          style: { marginRight: "8px" },
+        }),
+        "Enable AI search agent"
+      ),
+      React.createElement("label", { className: "muted" },
+        React.createElement("input", {
+          type: "checkbox",
+          checked: !!settings.enable_llm_rewrite,
+          onChange: (event) => setSettings((prev) => ({ ...prev, enable_llm_rewrite: event.target.checked })),
+          style: { marginRight: "8px" },
+        }),
+        "Enable AI rewrite agent"
+      )
+    ),
+
+    React.createElement("div", { className: "field" },
+      React.createElement("label", { className: "muted" }, "Search Agent Prompt"),
+      React.createElement("textarea", {
+        className: "input",
+        rows: 4,
+        value: settings.prompt_search,
+        onChange: (event) => setSettings((prev) => ({ ...prev, prompt_search: event.target.value })),
+      })
+    ),
+
+    React.createElement("div", { className: "field" },
+      React.createElement("label", { className: "muted" }, "Routing Agent Prompt"),
+      React.createElement("textarea", {
+        className: "input",
+        rows: 4,
+        value: settings.prompt_routing,
+        onChange: (event) => setSettings((prev) => ({ ...prev, prompt_routing: event.target.value })),
+      })
+    ),
+
+    React.createElement("div", { className: "field" },
+      React.createElement("label", { className: "muted" }, "Supervisor Agent Prompt"),
+      React.createElement("textarea", {
+        className: "input",
+        rows: 4,
+        value: settings.prompt_supervisor,
+        onChange: (event) => setSettings((prev) => ({ ...prev, prompt_supervisor: event.target.value })),
+      })
+    ),
+
+    React.createElement("div", { className: "field" },
+      React.createElement("label", { className: "muted" }, "Rewrite Agent Prompt"),
+      React.createElement("textarea", {
+        className: "input",
+        rows: 4,
+        value: settings.prompt_rewrite,
+        onChange: (event) => setSettings((prev) => ({ ...prev, prompt_rewrite: event.target.value })),
+      })
+    ),
+
+    React.createElement("div", { className: "row", style: { marginTop: "10px" } },
+      React.createElement("button", { className: "btn btn-soft", onClick: onTestConnection }, "Test Connection"),
+      React.createElement("button", { className: "btn btn-dark", onClick: onSaveSettings }, "Save AI Agent Settings")
+    ),
+
+    React.createElement("hr", { style: { border: 0, borderTop: "1px solid #eee", margin: "12px 0" } }),
+
+    React.createElement("div", { className: "field" },
+      React.createElement("div", { className: "row", style: { justifyContent: "space-between" } },
+        React.createElement("label", { className: "muted" }, "Learned Outreach Memory"),
+        React.createElement("div", { className: "row" },
+          React.createElement("button", { className: "btn btn-soft", onClick: onRefreshMemory }, "Refresh"),
+          React.createElement("button", { className: "btn btn-bad", onClick: onClearMemory }, "Clear Memory")
+        )
+      ),
+      !memoryItems || !memoryItems.length
+        ? React.createElement("div", { className: "muted", style: { marginTop: "8px" } }, "No learned memory yet.")
+        : React.createElement("div", { className: "template-grid", style: { marginTop: "8px" } },
+            memoryItems.slice(0, 10).map((item) => React.createElement("div", { key: item.id, className: "card template-card" },
+              React.createElement("div", { className: "template-top" },
+                React.createElement("div", { className: "template-title" }, `${item.channel || "email"} · ${item.specialty || "general"}`),
+                React.createElement("span", { className: "status" }, `score ${Number(item.quality_score || 0).toFixed(2)}`)
+              ),
+              React.createElement("div", { className: "menu-meta" }, `${item.source_event || "memory"} · used ${item.usage_count || 0}x`),
+              React.createElement("div", { className: "body-preview" }, item.pattern_text || "")
+            ))
+          )
     )
   );
 }
