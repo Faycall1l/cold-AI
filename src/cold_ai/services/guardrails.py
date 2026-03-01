@@ -115,3 +115,10 @@ def validate_template_library_entry(title: str, category: str, content: str) -> 
         "category": validated_category,
         "content": validated_content,
     }
+
+
+def validate_campaign_channel(channel: str) -> str:
+    cleaned = _normalize_single_line(channel).lower()
+    if cleaned not in {"email", "whatsapp"}:
+        raise GuardrailError("Campaign channel must be one of: email, whatsapp")
+    return cleaned

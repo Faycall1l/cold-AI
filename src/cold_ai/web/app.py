@@ -17,6 +17,7 @@ from ..repositories import CampaignRepository, DraftRepository, TemplateLibraryR
 from ..services.draft_service import generate_drafts
 from ..services.guardrails import (
     GuardrailError,
+    validate_campaign_channel,
     validate_campaign_inputs,
     validate_draft_content,
     validate_template_library_entry,
@@ -68,6 +69,7 @@ class SendDuePayload(BaseModel):
 class CreateCampaignPayload(BaseModel):
     name: str
     purpose: str = ""
+    channel: str = "email"
     subject_template: str
     body_template: str
 
@@ -167,9 +169,15 @@ def create_campaign(payload: CreateCampaignPayload, request: Request) -> dict:
     except GuardrailError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
+    try:
+        validated_channel = validate_campaign_channel(payload.channel)
+    except GuardrailError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
     campaign_id = CampaignRepository().create(
         validated["name"],
         validated["purpose"] or None,
+        validated_channel,
         validated["subject_template"],
         validated["body_template"],
     )
@@ -220,7 +228,7 @@ def update_draft(draft_id: int, payload: UpdateDraftPayload, request: Request) -
 @app.post("/api/campaigns/{campaign_id}/send-due")
 def send_due_campaign(campaign_id: int, payload: SendDuePayload, request: Request) -> dict:
     require_user(request)
-    sent, failed = send_due(dry_run=payload.dry_run)
+    sent, failed = send_due(dry_run=payload.dry_run, campaign_id=campaign_id)
     return {
         "ok": True,
         "campaign_id": campaign_id,

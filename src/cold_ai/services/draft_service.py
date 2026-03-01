@@ -10,7 +10,8 @@ def generate_drafts(campaign_id: int, limit: int) -> tuple[int, int]:
     if not campaign:
         raise ValueError(f"Campaign {campaign_id} not found")
 
-    leads = LeadRepository().list_for_drafting(limit)
+    channel = campaign.get("channel") or "email"
+    leads = LeadRepository().list_for_drafting(limit, channel=channel)
     draft_repository = DraftRepository()
     event_repository = EventRepository()
     orchestrator = OrchestratorAgent()
@@ -33,6 +34,7 @@ def generate_drafts(campaign_id: int, limit: int) -> tuple[int, int]:
             "first_name": enriched.get("first_name") or "Doctor",
             "full_name": enriched.get("full_name") or "Doctor",
             "email": enriched.get("email"),
+            "phone": enriched.get("phone"),
             "specialty": enriched.get("specialty") or "your specialty",
             "city": enriched.get("city") or "your city",
             "address": enriched.get("address") or "",

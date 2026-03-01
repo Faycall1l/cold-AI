@@ -53,6 +53,7 @@ function App() {
   const [createForm, setCreateForm] = useState({
     name: "",
     purpose: "",
+    channel: "email",
     subject_template: "",
     body_template: "",
   });
@@ -261,6 +262,7 @@ function App() {
     const payload = {
       name: createForm.name.trim(),
       purpose: createForm.purpose.trim(),
+      channel: createForm.channel,
       subject_template: createForm.subject_template,
       body_template: createForm.body_template,
     };
@@ -276,7 +278,7 @@ function App() {
         body: JSON.stringify(payload),
       });
       setShowCreateModal(false);
-      setCreateForm((prev) => ({ ...prev, name: "", purpose: "" }));
+      setCreateForm((prev) => ({ ...prev, name: "", purpose: "", channel: "email" }));
       setMessage(`Campaign created (#${result.campaign_id}).`);
       setError("");
       await loadCampaigns();
@@ -672,7 +674,7 @@ function CampaignList({ campaigns, onOpen, draftLimit, setDraftLimit, onGenerate
               onClick: () => onOpen(campaign.id),
             },
             React.createElement("div", { className: "menu-title" }, campaign.name),
-            React.createElement("div", { className: "menu-meta" }, `#${campaign.id} · ${campaign.status}`),
+            React.createElement("div", { className: "menu-meta" }, `#${campaign.id} · ${campaign.status} · ${campaign.channel || "email"}`),
             campaign.purpose && React.createElement("div", { className: "menu-meta" }, campaign.purpose),
             React.createElement("div", { className: "menu-actions" },
               React.createElement(
@@ -729,7 +731,7 @@ function CampaignDetails({
     const lowered = query.trim().toLowerCase();
     return drafts.filter((draft) => {
       const statusOk = statusFilter === "all" || draft.status === statusFilter;
-      const text = `${draft.full_name || ""} ${draft.email || ""} ${draft.subject || ""} ${draft.specialty || ""} ${draft.city || ""}`.toLowerCase();
+      const text = `${draft.full_name || ""} ${draft.email || ""} ${draft.phone || ""} ${draft.subject || ""} ${draft.specialty || ""} ${draft.city || ""}`.toLowerCase();
       const queryOk = !lowered || text.includes(lowered);
       return statusOk && queryOk;
     });
@@ -745,7 +747,8 @@ function CampaignDetails({
       React.createElement("span", { className: "pill" }, `Approved: ${statusCounts.approved || 0}`),
       React.createElement("span", { className: "pill" }, `Sent: ${statusCounts.sent || 0}`),
       React.createElement("span", { className: "pill" }, `Failed: ${statusCounts.failed || 0}`),
-      React.createElement("span", { className: "pill" }, `Rejected: ${statusCounts.rejected || 0}`)
+      React.createElement("span", { className: "pill" }, `Rejected: ${statusCounts.rejected || 0}`),
+      React.createElement("span", { className: "pill" }, `Channel: ${campaign.channel || "email"}`)
     ),
 
     React.createElement("div", { className: "card", style: { padding: "12px", marginBottom: "12px" } },
@@ -768,7 +771,7 @@ function CampaignDetails({
           onChange: (event) => setSendMode(event.target.value),
         },
           React.createElement("option", { value: "dry" }, "Dry-run"),
-          React.createElement("option", { value: "real" }, "Real send (SMTP)")
+          React.createElement("option", { value: "real" }, "Real send")
         ),
         React.createElement("button", { className: "btn btn-dark", onClick: onSendDue }, "Send Due")
       )
@@ -778,7 +781,7 @@ function CampaignDetails({
       React.createElement("div", { className: "row" },
         React.createElement("input", {
           className: "input",
-          placeholder: "Search name, email, subject…",
+          placeholder: "Search name, email/phone, subject…",
           value: query,
           onChange: (event) => setQuery(event.target.value),
         }),
@@ -812,14 +815,19 @@ function CampaignDetails({
               className: `card draft-card clickable ${selectedDraftId === draft.id ? "active" : ""}`,
               onClick: () => setSelectedDraftId(draft.id),
             },
-              React.createElement("div", { className: "draft-top" },
-                React.createElement("div", null,
-                  React.createElement("div", { className: "draft-name" }, draft.full_name || "-"),
-                  React.createElement("div", { className: "muted" }, draft.email),
-                  React.createElement("div", { className: "muted" }, `${draft.specialty || "-"} / ${draft.city || "-"}`)
-                ),
-                React.createElement("span", { className: "status" }, draft.status)
-              ),
+              (() => {
+                const recipient = campaign.channel === "whatsapp"
+                  ? (draft.phone || draft.email || "-")
+                  : (draft.email || draft.phone || "-");
+                return React.createElement("div", { className: "draft-top" },
+                  React.createElement("div", null,
+                    React.createElement("div", { className: "draft-name" }, draft.full_name || "-"),
+                    React.createElement("div", { className: "muted" }, recipient),
+                    React.createElement("div", { className: "muted" }, `${draft.specialty || "-"} / ${draft.city || "-"}`)
+                  ),
+                  React.createElement("span", { className: "status" }, draft.status)
+                );
+              })(),
               React.createElement("div", { className: "draft-label" }, "Subject"),
               React.createElement("div", { className: "draft-subject" }, draft.subject),
               React.createElement("div", { className: "draft-label" }, "Body"),
@@ -832,7 +840,11 @@ function CampaignDetails({
           ? React.createElement("div", { className: "empty" }, "Click a draft card to edit and personalize.")
           : React.createElement(React.Fragment, null,
               React.createElement("div", { className: "editor-title" }, `Editing draft #${activeDraft.id}`),
-              React.createElement("div", { className: "muted", style: { marginBottom: "10px" } }, `${activeDraft.full_name || "-"} · ${activeDraft.email}`),
+              React.createElement(
+                "div",
+                { className: "muted", style: { marginBottom: "10px" } },
+                `${activeDraft.full_name || "-"} · ${campaign.channel === "whatsapp" ? (activeDraft.phone || activeDraft.email || "-") : (activeDraft.email || activeDraft.phone || "-")}`,
+              ),
 
               React.createElement("div", { className: "field" },
                 React.createElement("label", { className: "muted" }, "Subject"),
@@ -930,6 +942,19 @@ function CreateCampaignModal({ form, setForm, onClose, onCreate }) {
           onChange: (event) => setForm((prev) => ({ ...prev, purpose: event.target.value })),
           placeholder: "Why this campaign exists and what outcome you want",
         })
+      ),
+
+      React.createElement("div", { className: "field" },
+        React.createElement("label", { className: "muted" }, "Channel"),
+        React.createElement("select", {
+          className: "select",
+          style: { maxWidth: "220px" },
+          value: form.channel || "email",
+          onChange: (event) => setForm((prev) => ({ ...prev, channel: event.target.value })),
+        },
+          React.createElement("option", { value: "email" }, "Email"),
+          React.createElement("option", { value: "whatsapp" }, "WhatsApp")
+        )
       ),
 
       React.createElement("div", { className: "field" },

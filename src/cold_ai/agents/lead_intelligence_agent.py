@@ -31,7 +31,7 @@ class LeadIntelligenceAgent:
             personalization_hook = "your medical practice"
 
         source_hash = hashlib.sha256(
-            f"{lead.get('email','')}|{lead.get('address','')}|{specialty}|{city}".encode("utf-8")
+            f"{lead.get('email','')}|{lead.get('phone','')}|{lead.get('address','')}|{specialty}|{city}".encode("utf-8")
         ).hexdigest()
 
         return {

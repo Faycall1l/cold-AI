@@ -6,7 +6,7 @@ Phase 1 MVP of an agentic cold outreach system focused on:
 - Generating personalized drafts from templates
 - Manual review and approval
 - Scheduling
-- Sending due emails (dry-run or SMTP)
+- Sending due outreach (email and WhatsApp dry-run)
 
 ## Personalization Engine (Phase 1.2)
 
@@ -65,11 +65,14 @@ In the campaign page you can:
 - switch between `Grid`, `List`, and `Compact` draft views
 
 From the main dashboard you can now create campaigns directly (no CLI required for this step), including campaign purpose.
+Campaigns now support channels: `email` and `whatsapp`.
 
 The app now includes sidebar navigation with dedicated tabs:
 
 - `Campaigns`: create and manage outreach campaigns/drafts
-- `Templates`: store reusable scripts and product/service descriptions
+- `Scripts`: store reusable outreach scripts
+- `Descriptions`: store reusable product/service descriptions
+- `Settings`: account and workspace preferences
 
 Campaign and draft guardrails are enforced server-side:
 
@@ -129,10 +132,13 @@ This creates a SQLite DB at `data/cold_ai.db`.
 Expected columns (aliases supported):
 
 - email (`email`, `mail`)
+- phone (`phone`, `telephone`, `tel`, `mobile`, `gsm`, `numero`, `numero de telephone`)
 - full name (`full_name`, `name`, `doctor_name`)
 - specialty (`specialty`, `speciality`, `specialite`)
 - city (`city`, `ville`)
 - address (`address`, `adresse`)
+
+Rows with phone but no email are still imported for WhatsApp campaigns.
 
 ```bash
 cold-ai import-leads --csv-path data/doctors.csv
@@ -144,9 +150,12 @@ cold-ai import-leads --csv-path data/doctors.csv
 cold-ai create-campaign \
   --name "Algeria Doctors Outreach" \
   --purpose "Book discovery calls with priority clinics" \
+  --channel "email" \
   --subject-template templates/subject_default.txt \
   --body-template templates/body_default.txt
 ```
+
+For WhatsApp campaigns, set `--channel "whatsapp"`.
 
 ## 5) Generate drafts
 
@@ -175,7 +184,7 @@ cold-ai import-approvals --csv-path data/exports/campaign_1_approvals.csv
 
 CSV approval remains available as a fallback flow.
 
-## 8) Send due emails
+## 8) Send due outreach
 
 Dry-run:
 
@@ -195,6 +204,11 @@ export COLD_AI_SMTP_STARTTLS="true"
 
 cold-ai send-due
 ```
+
+Notes for WhatsApp:
+
+- `dry-run` is supported and prints WhatsApp deliveries to console.
+- real WhatsApp provider integration is not configured yet, so real mode currently fails safely for WhatsApp drafts.
 
 ## Notes
 

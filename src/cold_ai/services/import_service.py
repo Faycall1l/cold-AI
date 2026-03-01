@@ -10,6 +10,7 @@ from .csv_io import read_csv_rows
 
 ALIASES = {
     "email": ["email", "mail"],
+    "phone": ["phone", "telephone", "tel", "mobile", "gsm", "numero", "numero de telephone"],
     "full_name": [
         "full_name",
         "name",
@@ -29,6 +30,24 @@ ALIASES = {
     "commune": ["commune"],
     "wilaya": ["wilaya"],
 }
+
+
+def _normalize_phone(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    has_plus = text.startswith("+")
+    digits = re.sub(r"\D+", "", text)
+    if not digits:
+        return ""
+    if has_plus:
+        return f"+{digits}"
+    return digits
+
+
+def _synthetic_email_for_phone(phone: str) -> str:
+    normalized = re.sub(r"\D+", "", phone)
+    return f"phone-{normalized}@no-email.invalid"
 
 
 def _normalize_key(value: str) -> str:
@@ -55,8 +74,11 @@ def import_leads(csv_path) -> tuple[int, int]:
 
     for row in rows:
         email = _first_present(row, ALIASES["email"]).lower()
-        if not email:
+        phone = _normalize_phone(_first_present(row, ALIASES["phone"]))
+        if not email and not phone:
             continue
+        if not email and phone:
+            email = _synthetic_email_for_phone(phone)
 
         city = _first_present(row, ALIASES["city"])
         commune = _first_present(row, ALIASES["commune"])
@@ -66,6 +88,7 @@ def import_leads(csv_path) -> tuple[int, int]:
 
         lead = {
             "email": email,
+            "phone": phone,
             "full_name": _first_present(row, ALIASES["full_name"]),
             "specialty": _first_present(row, ALIASES["specialty"]),
             "city": city,

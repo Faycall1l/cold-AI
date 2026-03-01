@@ -66,8 +66,9 @@ def create_campaign_command(
     subject_template: Path = typer.Option(..., exists=True, readable=True),
     body_template: Path = typer.Option(..., exists=True, readable=True),
     purpose: str = typer.Option(""),
+    channel: str = typer.Option("email"),
 ) -> None:
-    campaign_id = create_campaign(name, subject_template, body_template, purpose=purpose)
+    campaign_id = create_campaign(name, subject_template, body_template, purpose=purpose, channel=channel)
     typer.echo(f"Campaign created with id={campaign_id}")
 
 

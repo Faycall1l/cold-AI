@@ -19,14 +19,15 @@ class LeadRepository:
                 try:
                     conn.execute(
                         """
-                        INSERT INTO leads (full_name, first_name, last_name, email, specialty, city, address, source_hash)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO leads (full_name, first_name, last_name, email, phone, specialty, city, address, source_hash)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             lead.get("full_name"),
                             lead.get("first_name"),
                             lead.get("last_name"),
                             lead["email"],
+                            lead.get("phone"),
                             lead.get("specialty"),
                             lead.get("city"),
                             lead.get("address"),
@@ -38,12 +39,18 @@ class LeadRepository:
                     skipped += 1
         return inserted, skipped
 
-    def list_for_drafting(self, limit: int) -> list[dict]:
+    def list_for_drafting(self, limit: int, channel: str) -> list[dict]:
+        if channel == "whatsapp":
+            where_clause = "l.phone IS NOT NULL AND trim(l.phone) != ''"
+        else:
+            where_clause = "l.email IS NOT NULL AND lower(l.email) NOT LIKE '%@no-email.invalid'"
+
         with get_connection() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT l.*
                 FROM leads l
+                WHERE {where_clause}
                 ORDER BY l.id ASC
                 LIMIT ?
                 """,
@@ -58,14 +65,14 @@ class LeadRepository:
 
 
 class CampaignRepository:
-    def create(self, name: str, purpose: str | None, subject_template: str, body_template: str) -> int:
+    def create(self, name: str, purpose: str | None, channel: str, subject_template: str, body_template: str) -> int:
         with get_connection() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO campaigns (name, purpose, subject_template, body_template)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO campaigns (name, purpose, channel, subject_template, body_template)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (name, purpose, subject_template, body_template),
+                (name, purpose, channel, subject_template, body_template),
             )
             return int(cursor.lastrowid)
 
@@ -102,9 +109,10 @@ class DraftRepository:
         with get_connection() as conn:
             rows = conn.execute(
                 """
-                SELECT d.*, l.email, l.full_name, l.specialty, l.city
+                SELECT d.*, l.email, l.phone, l.full_name, l.specialty, l.city, c.channel
                 FROM drafts d
                 JOIN leads l ON l.id = d.lead_id
+                JOIN campaigns c ON c.id = d.campaign_id
                 WHERE d.campaign_id = ?
                 ORDER BY d.id ASC
                 """,
@@ -141,19 +149,24 @@ class DraftRepository:
                 (subject, body, draft_id),
             )
 
-    def list_due(self, now_iso: str) -> list[dict]:
+    def list_due(self, now_iso: str, campaign_id: int | None = None) -> list[dict]:
+        where_campaign = "AND d.campaign_id = ?" if campaign_id is not None else ""
+        params: tuple = (now_iso, campaign_id) if campaign_id is not None else (now_iso,)
+
         with get_connection() as conn:
             rows = conn.execute(
-                """
-                SELECT d.*, l.email
+                f"""
+                SELECT d.*, l.email, l.phone, c.channel
                 FROM drafts d
                 JOIN leads l ON l.id = d.lead_id
+                JOIN campaigns c ON c.id = d.campaign_id
                 WHERE d.status = 'approved'
                   AND d.scheduled_at IS NOT NULL
                   AND d.scheduled_at <= ?
+                  {where_campaign}
                 ORDER BY d.scheduled_at ASC
                 """,
-                (now_iso,),
+                params,
             ).fetchall()
         return [dict(row) for row in rows]
 

@@ -29,6 +29,7 @@ def init_db() -> None:
                 first_name TEXT,
                 last_name TEXT,
                 email TEXT NOT NULL UNIQUE,
+                phone TEXT,
                 specialty TEXT,
                 city TEXT,
                 address TEXT,
@@ -40,6 +41,7 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 purpose TEXT,
+                channel TEXT NOT NULL DEFAULT 'email',
                 subject_template TEXT NOT NULL,
                 body_template TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
@@ -98,6 +100,15 @@ def init_db() -> None:
         }
         if "purpose" not in campaign_columns:
             conn.execute("ALTER TABLE campaigns ADD COLUMN purpose TEXT")
+        if "channel" not in campaign_columns:
+            conn.execute("ALTER TABLE campaigns ADD COLUMN channel TEXT NOT NULL DEFAULT 'email'")
+
+        lead_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(leads)").fetchall()
+        }
+        if "phone" not in lead_columns:
+            conn.execute("ALTER TABLE leads ADD COLUMN phone TEXT")
 
         existing = conn.execute(
             "SELECT id FROM users WHERE lower(email) = lower(?)",
