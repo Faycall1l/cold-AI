@@ -12,6 +12,7 @@ from .db import init_db
 from .services.approval_service import export_approvals, import_approvals
 from .services.campaign_service import create_campaign
 from .services.draft_service import generate_drafts
+from .services.eval_harness import run_agent_evaluation
 from .services.import_service import import_leads
 from .services.send_service import send_due
 from .web.app import app as web_app
@@ -105,6 +106,21 @@ def import_approvals_command(csv_path: Path = typer.Option(..., exists=True, rea
 def send_due_command(dry_run: bool = typer.Option(False)) -> None:
     sent, failed = send_due(dry_run=dry_run)
     typer.echo(f"Send finished: sent={sent}, failed={failed}")
+
+
+@app.command("eval-agents")
+def eval_agents_command(
+    output: Path = typer.Option(Path("data/exports/agent_eval_report.json")),
+) -> None:
+    report = run_agent_evaluation(output_path=output)
+    summary = report.get("summary") or {}
+    typer.echo(
+        "Agent eval complete: "
+        f"scenarios={summary.get('scenarios', 0)}, "
+        f"routing_success_rate={summary.get('routing_success_rate', 0.0)}, "
+        f"contract_pass_rate={summary.get('contract_pass_rate', 0.0)}"
+    )
+    typer.echo(f"Report written: {output}")
 
 
 @app.command("review-ui")

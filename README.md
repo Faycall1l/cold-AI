@@ -304,6 +304,20 @@ Dry-run:
 cold-ai send-due --dry-run
 ```
 
+## 9) Evaluate agent quality (offline harness)
+
+Run the built-in evaluation harness to check contract validation and agent fallback behavior:
+
+```bash
+cold-ai eval-agents --output data/exports/agent_eval_report.json
+```
+
+This writes a JSON report with:
+
+- routing success rate across sample scenarios
+- Pydantic contract pass rate
+- rewrite/reflection/supervisor status distribution
+
 SMTP mode:
 
 ```bash
