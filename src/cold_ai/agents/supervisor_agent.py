@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..services.ai_agent_runtime import resolve_agent_llm_config
+from ..services.agent_contracts import validate_supervisor_review
 from ..services.llm_router import LLMRouter
 from ..services.outreach_knowledge_base import build_outreach_knowledge_context
 
@@ -43,14 +44,16 @@ class SupervisorAgent:
             temperature=0.1,
         )
 
-        if not result:
+        validated = validate_supervisor_review(result)
+        if not validated:
             return {
                 "status": "approved" if fallback_score >= 0.5 else "needs_revision",
                 "score": fallback_score,
                 "notes": "heuristic fallback",
             }
 
-        score = float(result.get("score") or fallback_score)
-        status = str(result.get("status") or ("approved" if score >= 0.5 else "needs_revision"))
-        notes = str(result.get("notes") or "")
-        return {"status": status, "score": max(0.0, min(1.0, score)), "notes": notes}
+        return {
+            "status": validated.status,
+            "score": validated.score,
+            "notes": validated.notes,
+        }

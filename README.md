@@ -21,6 +21,20 @@ Draft generation now follows a multi-step agent flow:
 7. supervisor quality review
 8. fallback-safe deterministic behavior if provider fails
 
+### Pydantic AI Contract Checks
+
+Agent outputs are now validated with strict Pydantic schemas before use. Invalid or malformed LLM JSON responses are rejected and safely downgraded to deterministic fallbacks.
+
+Validated agent contracts include:
+
+- search query output
+- routing decision output
+- rewrite output
+- reflection output
+- supervisor review output
+
+Implementation reference: `src/cold_ai/services/agent_contracts.py`
+
 ### Optional environment flags
 
 ```bash

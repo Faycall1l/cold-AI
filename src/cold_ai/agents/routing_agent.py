@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..services.ai_agent_runtime import resolve_agent_llm_config
+from ..services.agent_contracts import validate_routing_decision
 from ..services.llm_router import LLMRouter
 from ..services.outreach_knowledge_base import build_outreach_knowledge_context
 
@@ -53,10 +54,11 @@ class RoutingAgent:
             temperature=0.2,
         )
 
-        if not result:
+        validated = validate_routing_decision(result)
+        if not validated:
             return fallback
 
         return {
-            "routing_angle": str(result.get("routing_angle") or fallback["routing_angle"]),
-            "routing_cta": str(result.get("routing_cta") or fallback["routing_cta"]),
+            "routing_angle": validated.routing_angle,
+            "routing_cta": validated.routing_cta,
         }

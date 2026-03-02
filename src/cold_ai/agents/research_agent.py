@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..services.ai_agent_runtime import resolve_agent_llm_config
+from ..services.agent_contracts import validate_search_query
 from ..services.llm_router import LLMRouter
 from ..services.outreach_knowledge_base import build_outreach_knowledge_context
 from ..tools.web_search_tool import WebSearchTool
@@ -65,7 +66,8 @@ class ResearchAgent:
                 runtime_config=self.runtime,
                 temperature=0.1,
             )
-            query = str((llm_query or {}).get("query") or fallback_query).strip()
+            validated_query = validate_search_query(llm_query)
+            query = str(validated_query.query if validated_query else fallback_query).strip()
             result = self.web_search_tool.run({"query": query})
             if result.ok:
                 web_snippet = str(result.data.get("snippet") or "")

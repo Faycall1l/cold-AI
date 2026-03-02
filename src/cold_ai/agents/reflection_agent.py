@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..services.ai_agent_runtime import resolve_agent_llm_config
+from ..services.agent_contracts import validate_reflection
 from ..services.llm_router import LLMRouter
 from ..services.outreach_knowledge_base import build_outreach_knowledge_context
 
@@ -49,13 +50,14 @@ class ReflectionAgent:
             temperature=0.2,
         )
 
-        if not result:
+        validated = validate_reflection(result)
+        if not validated:
             return self._heuristic_refine(subject, body, knowledge)
 
-        new_subject = str(result.get("subject") or subject).strip()
-        new_body = str(result.get("body") or body).strip()
-        critique = str(result.get("critique") or "llm_reflection").strip()
-        confidence = float(result.get("confidence") or 0.55)
+        new_subject = validated.subject.strip() or subject
+        new_body = validated.body.strip() or body
+        critique = validated.critique.strip() or "llm_reflection"
+        confidence = validated.confidence
 
         if confidence < 0.45 or len(new_body) < 80:
             return self._heuristic_refine(subject, body, knowledge)

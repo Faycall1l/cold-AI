@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..services.ai_agent_runtime import resolve_agent_llm_config
+from ..services.agent_contracts import validate_rewrite
 from ..services.llm_router import LLMRouter
 from ..services.outreach_knowledge_base import build_outreach_knowledge_context
 
@@ -53,12 +54,13 @@ class RewriteAgent:
             runtime_config=self.runtime,
             custom_prompt=self.runtime.prompt_rewrite,
         )
-        if not rewritten:
-            return subject, body, "fallback_no_response"
+        validated = validate_rewrite(rewritten)
+        if not validated:
+            return subject, body, "fallback_schema_validation"
 
-        new_subject = str(rewritten.get("subject") or "").strip()
-        new_body = str(rewritten.get("body") or "").strip()
-        confidence = float(rewritten.get("confidence") or 0.0)
+        new_subject = validated.subject.strip()
+        new_body = validated.body.strip()
+        confidence = validated.confidence
 
         if not self._passes_quality_gate(new_subject, new_body, confidence):
             return subject, body, "fallback_quality_gate"
