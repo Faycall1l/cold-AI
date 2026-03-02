@@ -48,6 +48,14 @@ def _free_port(port: int) -> int:
     return killed
 
 
+def _find_next_free_port(host: str, start_port: int, max_checks: int = 50) -> int | None:
+    for offset in range(1, max_checks + 1):
+        candidate = start_port + offset
+        if not _port_is_busy(host, candidate):
+            return candidate
+    return None
+
+
 @app.command("init-db")
 def init_db_command() -> None:
     init_db()
@@ -104,6 +112,7 @@ def review_ui_command(
     host: str = typer.Option("127.0.0.1"),
     port: int = typer.Option(8000),
     auto_free_port: bool = typer.Option(True, "--auto-free-port/--no-auto-free-port"),
+    auto_fallback_port: bool = typer.Option(True, "--auto-fallback-port/--no-auto-fallback-port"),
 ) -> None:
     import uvicorn
 
@@ -127,12 +136,27 @@ def review_ui_command(
             raise typer.Exit(code=1)
 
     if _port_is_busy(host, port):
-        typer.echo(
-            f"Port {port} is still in use after auto-free attempt. "
-            "Retry with a different --port or free it manually."
-        )
-        raise typer.Exit(code=1)
+        if auto_fallback_port:
+            fallback_port = _find_next_free_port(host, port)
+            if fallback_port is None:
+                typer.echo(
+                    f"Port {port} is still in use after auto-free attempt and no fallback port was found. "
+                    "Retry with a different --port or free it manually."
+                )
+                raise typer.Exit(code=1)
+            typer.echo(
+                f"Port {port} is still busy. Starting review UI on fallback port {fallback_port}. "
+                f"URL: http://{host}:{fallback_port}"
+            )
+            port = fallback_port
+        else:
+            typer.echo(
+                f"Port {port} is still in use after auto-free attempt. "
+                "Retry with a different --port or free it manually."
+            )
+            raise typer.Exit(code=1)
 
+    typer.echo(f"Starting review UI at http://{host}:{port}")
     uvicorn.run(web_app, host=host, port=port)
 
 
