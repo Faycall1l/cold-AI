@@ -107,7 +107,8 @@ def review_ui_command(
 ) -> None:
     import uvicorn
 
-    if _port_is_busy(host, port):
+    busy_before = _port_is_busy(host, port)
+    if busy_before:
         if auto_free_port:
             killed = _free_port(port)
             if killed:
@@ -117,12 +118,20 @@ def review_ui_command(
                     f"Port {port} is busy and no process was terminated automatically. "
                     "Retry with a different port or free it manually."
                 )
+                raise typer.Exit(code=1)
         else:
             typer.echo(
                 f"Port {port} is already in use. "
                 "Use --auto-free-port or choose a different --port."
             )
             raise typer.Exit(code=1)
+
+    if _port_is_busy(host, port):
+        typer.echo(
+            f"Port {port} is still in use after auto-free attempt. "
+            "Retry with a different --port or free it manually."
+        )
+        raise typer.Exit(code=1)
 
     uvicorn.run(web_app, host=host, port=port)
 
